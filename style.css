@@ -103,3 +103,11 @@ input:disabled{
   color:var(--navy)!important;
   font-weight:700;
 }
+
+/* v0.5.0 regional/category expansion */
+.control-grid{grid-template-columns:repeat(5,minmax(155px,1fr))}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.rate-note{font-size:11px;color:var(--muted);margin:6px 0 0}
+@media(max-width:1300px){.control-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:850px){.control-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.control-grid{grid-template-columns:1fr}}

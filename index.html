@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="계시별 요금제 시간대 및 단가 변경에 따른 전력량요금 매출 영향 시뮬레이터">
   <title>PRAS - TOU</title>
-  <link rel="stylesheet" href="./style.css?v=20260804-041">
+  <link rel="stylesheet" href="./style.css?v=20260810-050">
 </head>
 <body>
 <header class="hero">
@@ -20,6 +20,7 @@
   <section class="panel">
     <h2>1. 분석 조건</h2>
     <div class="control-grid">
+      <label>분석 지역<select id="region"><option value="NATIONAL">전국</option><option value="LAND">육지</option><option value="JEJU">제주</option></select></label>
       <label>분석 종별<select id="category"></select></label>
       <label>부하곡선 연도<select id="year"></select></label>
       <label>분석 범위<select id="scope"><option value="연간">연간</option><option value="하계">하계</option><option value="춘추계">봄·가을철</option><option value="동계">겨울철</option></select></label>
@@ -109,7 +110,7 @@
         </div>
         <div id="yAxisInfo" class="muted chart-axis-info"></div>
         <svg id="loadChart" class="chart" viewBox="0 0 900 285" preserveAspectRatio="none"></svg>
-        <p class="muted">‘전체’는 평일·토요일·일·공휴일을 모두 포함한 일평균 부하곡선임. 원자료에서 일요일과 공휴일은 ‘일·공휴일’로 통합되어 있음. 요일별 탭에서는 상단 색 띠로 해당 요일의 시나리오 시간대 구분을 표시함.</p>
+        <p class="muted">‘전체’는 선택한 지역·종별의 전체 일평균 부하곡선임. 2025~2026년 계절·요일은 날짜와 요금 적용용 휴일기준으로 자동 생성함. 전국 분석의 시간대 색 띠는 육지 기준을 표시함.</p>
       </section>
     </div>
 
@@ -130,7 +131,9 @@
         <ul class="notes">
           <li>전력량요금만 계산하며 기본요금·기후환경요금·연료비조정요금·세금은 제외</li>
           <li>요금 변경에 따른 고객의 부하이동·절감 반응은 미반영</li>
-          <li>선택요금별 시간대 부하곡선이 없어 종별 전체 부하형상을 판매량 비중으로 축소 적용한 환산값</li>
+          <li>선택요금별 시간대 부하곡선이 없어 종별 전체 부하형상에 전국 판매량 구성비를 적용한 추정값</li>
+          <li>육지·제주의 세부 전압·선택요금 구성은 지역별 자료가 없어 전국 판매량 구성비를 대리 적용</li>
+          <li>2026년은 1월 1일~6월 30일 자료만 분석하며 2022~2025 연평균에는 포함하지 않음</li>
           <li>GitHub 데이터 변경 후 Ctrl+F5를 눌러 최신 파일을 다시 불러옴</li>
         </ul>
       </section>
@@ -139,6 +142,6 @@
 </main>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="./app.js?v=20260804-041"></script>
+<script src="./app.js?v=20260810-050"></script>
 </body>
 </html>
