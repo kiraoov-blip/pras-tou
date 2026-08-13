@@ -1,4 +1,4 @@
-console.info("PRAS - TOU regional/category model v0.5.0 loaded");
+console.info("PRAS - TOU mobile responsive model v0.5.1 loaded");
 
 const META_URL="./data/tou_data.xlsx";
 const LAND_URL="./data/usage_land.xlsx";
@@ -347,10 +347,11 @@ function renderHours(){
   document.querySelectorAll(".hour").forEach(el=>el.onclick=()=>{const h=number(el.dataset.hour),c=state.scenarioSchedule[state.activeSeason][day][h];state.scenarioSchedule[state.activeSeason][day][h]=PERIODS[(PERIODS.indexOf(c)+1)%3];renderAll()});
 }
 function renderScheduleCompare(){
-  const day=$("dayType").value,b=buildDefaultSchedule($("baseVersion").value,editingRegion())[state.activeSeason][day],s=state.scenarioSchedule[state.activeSeason][day];
-  let h=`<div></div>${Array.from({length:24},(_,i)=>`<div class="muted" style="text-align:center">${i}</div>`).join("")}`;
-  h+=`<div class="label">기준안</div>${b.map(p=>`<div class="mini ${PERIOD_CLASS[p]}">${p[0]}</div>`).join("")}`;
-  h+=`<div class="label">시나리오</div>${s.map(p=>`<div class="mini ${PERIOD_CLASS[p]}">${p[0]}</div>`).join("")}`;$("scheduleCompare").innerHTML=h;
+  const day=$("dayType").value;
+  const base=buildDefaultSchedule($("baseVersion").value,editingRegion())[state.activeSeason][day];
+  const scenario=state.scenarioSchedule[state.activeSeason][day];
+  const makeRow=(label,values)=>`<div class="schedule-row"><div class="schedule-label">${label}</div><div class="schedule-hours">${values.map((p,i)=>`<div class="schedule-cell"><span>${String(i).padStart(2,"0")}</span><div class="mini ${PERIOD_CLASS[p]}">${p[0]}</div></div>`).join("")}</div></div>`;
+  $("scheduleCompare").innerHTML=makeRow("기준안",base)+makeRow("시나리오",scenario);
 }
 function rateTable(r,editable){let h=`<thead><tr><th>계절</th>${PERIODS.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;for(const s of SEASONS){h+=`<tr><td>${s==="춘추계"?"봄·가을철":s}</td>`;for(const p of PERIODS)h+=editable?`<td><input type="number" step="0.1" data-season="${s}" data-period="${p}" value="${r[s][p].toFixed(1)}"></td>`:`<td>${r[s][p].toFixed(1)}</td>`;h+="</tr>"}return h+"</tbody>"}
 function renderRates(){
