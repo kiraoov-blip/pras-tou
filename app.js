@@ -410,8 +410,8 @@ function renderChart(){
   const {yMin,yMax}=getYAxisBounds(vals),x=i=>l+i*(w-l-rr)/23,y=v=>h-b-(v-yMin)/(yMax-yMin)*(h-t-b);let out="";
   for(let i=0;i<24;i++){const xx=l+i*(w-l-rr)/24,ww=(w-l-rr)/24;if(day==="전체")out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="#eef1f5"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8" fill="#687386">전체</text>`;else{const p=state.scenarioSchedule[state.activeSeason][day][i];out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="var(--${PERIOD_CLASS[p]})"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8">${p[0]}</text>`}}
   for(let k=0;k<=4;k++){const ratio=k/4,yy=t+(h-t-b)*ratio,tick=yMax-(yMax-yMin)*ratio;out+=`<line x1="${l}" y1="${yy}" x2="${w-rr}" y2="${yy}" stroke="#e4e8ed"/><text x="${l-7}" y="${yy+4}" text-anchor="end" font-size="9" fill="#687386">${(tick/1e6).toFixed(1)}</text>`}
-  out+=`<text x="8" y="${t-7}" font-size="9" fill="#687386">백만 kWh/일</text><polyline points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#2468ad" stroke-width="3"/>`;
-  vals.forEach((v,i)=>{out+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.3" fill="#2468ad"/>`;if(i%2===0)out+=`<text x="${x(i)}" y="${h-13}" text-anchor="middle" font-size="9" fill="#687386">${i}</text>`});svg.innerHTML=out;
+  out+=`<text x="8" y="${t-7}" font-size="9" fill="#687386">백만 kWh/일</text><polyline points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#2168df" stroke-width="3"/>`;
+  vals.forEach((v,i)=>{out+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.3" fill="#2168df"/>`;if(i%2===0)out+=`<text x="${x(i)}" y="${h-13}" text-anchor="middle" font-size="9" fill="#687386">${i}</text>`});svg.innerHTML=out;
 }
 
 function updateWarning(){
