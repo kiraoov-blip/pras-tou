@@ -8,6 +8,19 @@
   <link rel="stylesheet" href="./style.css?v=20260813-052">
 </head>
 <body>
+<!--
+  상단 2단 구조(PRAS-DER·CARE-Jeju와 통일) — 얇은 다크 톤 .topbar(브랜드 +
+  "처음으로" 버튼)와 그 아래 그라디언트 .hero(제목·부제)로 나눈다. PRAS-TOU는
+  별도 프레임워크 없는 정적 페이지이고 basePath 개념이 없어 /tou/ 아래에서
+  서비스되므로, CARE와 동일하게 href="/"가 그대로 도메인 루트(허브)를 가리킨다.
+-->
+<div class="topbar">
+  <a href="/tou/" class="site-brand">PRAS<span>TOU</span></a>
+  <a href="/" class="site-home-btn" aria-label="처음 화면으로">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 11.4 12 4.4l8.4 7"/><path d="M5.7 10.2V19a1 1 0 0 0 1 1H9.6v-5.3h4.8V20h2.9a1 1 0 0 0 1-1v-8.8"/></svg>
+    <span>처음으로</span>
+  </a>
+</div>
 <header class="hero">
   <div>
     <h1>계시별 요금제 수익 분석 시뮬레이터(PRAS - TOU)</h1>
