@@ -138,7 +138,10 @@
         <button id="applyYAxis" class="btn">세로축 적용</button>
       </div>
       <div id="yAxisInfo" class="muted chart-axis-info"></div>
-      <svg id="loadChart" class="chart" viewBox="0 0 900 285" preserveAspectRatio="none"></svg>
+      <!-- viewBox는 최초 표시 전 기본값(900×285)이고, renderChart()가 실제
+           렌더링 폭을 읽어 매번 새로 맞춘다(가로로 글자가 늘어나 보이던
+           문제 수정 — app.js의 renderChart() 주석 참고). -->
+      <svg id="loadChart" class="chart" viewBox="0 0 900 285"></svg>
       <p class="muted">‘전체’는 선택한 지역·종별의 전체 일평균 부하곡선임. 2025~2026년 계절·요일은 날짜와 요금 적용용 휴일기준으로 자동 생성함. 전국 분석의 시간대 색 띠는 육지 기준을 표시함.</p>
     </section>
 

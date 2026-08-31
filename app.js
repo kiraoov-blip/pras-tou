@@ -23,7 +23,7 @@ const state={
   metaWorkbook:null,
   weights:[],metaTariffs:[],
   usage:{LAND:{},JEJU:{}},
-  selectedCategory:"IND_EUL",
+  selectedCategory:"ALL_TOU",
   activeSeason:"하계",graphDayType:"전체",
   scenarioSchedule:null,scenarioRates:null,
   lastResult:null,
@@ -418,7 +418,17 @@ function getGraphDaySeries(dayType){const rows=aggregatedDailyRows(),selected=da
 function getYAxisBounds(vals){const dataMin=Math.min(...vals),dataMax=Math.max(...vals),mode=$("yAxisMode").value;let yMin=0,yMax=Math.max(dataMax*1.08,1);if(mode==="zoom"){const span=Math.max(dataMax-dataMin,dataMax*.02,1);yMin=Math.max(0,dataMin-span*.18);yMax=dataMax+span*.18}else if(mode==="custom"){const a=number($("yAxisMin").value)*1e6,b=number($("yAxisMax").value)*1e6;if(b>a){yMin=a;yMax=b}else{const span=Math.max(dataMax-dataMin,dataMax*.02,1);yMin=Math.max(0,dataMin-span*.18);yMax=dataMax+span*.18}}if(yMax<=yMin)yMax=yMin+1;if(mode!=="custom"){$("yAxisMin").value=(yMin/1e6).toFixed(1);$("yAxisMax").value=(yMax/1e6).toFixed(1)}$("yAxisInfo").textContent=`현재 세로축 ${(yMin/1e6).toFixed(1)}~${(yMax/1e6).toFixed(1)}GWh/일`;return{yMin,yMax}}
 function updateYAxisControlState(){const custom=$("yAxisMode").value==="custom";$("yAxisMin").disabled=!custom;$("yAxisMax").disabled=!custom}
 function renderChart(){
-  const svg=$("loadChart"),w=900,h=285,l=64,rr=18,t=36,b=35,day=state.graphDayType,graph=getGraphDaySeries(day),vals=graph.vals;
+  // 화면이 넓어질수록(특히 브라우저 전체화면) svg가 실제로 렌더링되는 폭은
+  // CSS(.chart{width:100%})를 따라 계속 넓어지는데, viewBox 폭은 900으로
+  // 고정돼 있고 preserveAspectRatio="none"이 가로세로를 각각 다른 배율로
+  // 늘려 채웠다 — 그 결과 안의 숫자 글자(<text>)도 가로로만 길게 늘어나
+  // 보기 흉해지는 문제가 있었다. 고정폭(900) 대신 svg의 실제 렌더링 폭을
+  // 읽어 viewBox 폭으로 그대로 쓰면 1좌표=1픽셀이 유지되어(preserveAspectRatio
+  // 기본값도 그대로 두면 되지만, x/y 배율이 이제 같아지므로 사실상 의미가
+  // 없어진다) 글자·선이 가로세로 어느 쪽으로도 왜곡되지 않는다. 폭을 못
+  // 구하는 경우(예: 렌더링 전)에는 기존 900을 그대로 쓴다.
+  const svg=$("loadChart"),w=svg.getBoundingClientRect().width||900,h=285,l=64,rr=18,t=36,b=35,day=state.graphDayType,graph=getGraphDaySeries(day),vals=graph.vals;
+  svg.setAttribute("viewBox",`0 0 ${w} ${h}`);
   const regionLabel=$("region").selectedOptions[0]?.textContent||"",catLabel=$("category").selectedOptions[0]?.textContent||"",yearLabel=$("year").selectedOptions[0]?.textContent||"",scopeLabel=$("scope").selectedOptions[0]?.textContent||"";
   $("graphDayInfo").textContent=`${regionLabel} · ${catLabel} · ${yearLabel} · ${scopeLabel} · ${day==="전체"?"전체 요일":day} ${graph.rowCount.toLocaleString()}일 평균`;
   if(!graph.rowCount){svg.innerHTML='<text x="450" y="145" text-anchor="middle" font-size="14" fill="#5f7267">선택한 조건의 부하자료가 없음</text>';return}
@@ -480,6 +490,18 @@ $("yAxisMax").onchange=()=>{if(state.lastResult)renderChart()};
 document.querySelectorAll("#seasonTabs .tab").forEach(btn=>btn.onclick=()=>{state.activeSeason=btn.dataset.season;document.querySelectorAll("#seasonTabs .tab").forEach(x=>x.classList.toggle("active",x===btn));renderAll()});
 document.querySelectorAll("#graphDayTabs .tab").forEach(btn=>btn.onclick=()=>{state.graphDayType=btn.dataset.graphDay;document.querySelectorAll("#graphDayTabs .tab").forEach(x=>x.classList.toggle("active",x===btn));renderChart()});
 document.querySelectorAll(".rate-adjust").forEach(btn=>btn.onclick=()=>{if(selectedCategoryId()==="ALL_TOU")return;const m=number(btn.dataset.mult);for(const s of SEASONS)for(const p of PERIODS)state.scenarioRates[s][p]=Math.round(state.scenarioRates[s][p]*m*10)/10;renderAll()});
+
+// 창 크기 변경(브라우저 전체화면 진입/해제 포함)마다 그래프의 viewBox 폭을
+// 다시 맞춘다 — renderChart()가 매번 svg의 "그 시점" 렌더링 폭을 읽어
+// viewBox에 반영하므로, 전체화면으로 넓어진 뒤에도 숫자 글자가 가로로
+// 늘어나지 않고 항상 원래 비율로 보인다. resize 이벤트가 짧은 시간에
+// 여러 번 발생할 수 있어 150ms 디바운스로 과도한 재계산을 막는다.
+let resizeChartTimer=null;
+window.addEventListener("resize",()=>{
+  if(!state.lastResult)return;
+  clearTimeout(resizeChartTimer);
+  resizeChartTimer=setTimeout(renderChart,150);
+});
 
 updateYAxisControlState();
 loadGithubData();
