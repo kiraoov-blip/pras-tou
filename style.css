@@ -45,12 +45,22 @@ h2{font-size:17px;margin:0 0 12px}h3{font-size:14px;margin:15px 0 8px;color:var(
 /* "4. 요일별 평균 부하곡선"을 왼쪽 칸(2·3번)에 가둬 두지 않고 화면 오른쪽
    끝까지 꽉 차게 보여 달라는 요청 — grid-template-areas로 1행은 기존처럼
    좌(2·3번)/우(5~8번) 2열, 2행은 4번 패널 하나가 두 열을 모두 차지("full")
-   하도록 만든다. DOM 순서(왼쪽 칸 → aside → 4번 패널)와 무관하게 배치를
-   지정할 수 있어 4번 패널을 마크업 마지막에 둬도 화면에서는 1행 아래 전체
-   폭에 걸쳐 보인다. */
-.layout{display:grid;grid-template-columns:minmax(700px,1.2fr) minmax(470px,.8fr);grid-template-areas:"left aside" "full full";gap:14px}
-.layout-left{grid-area:left}
-.layout>aside{grid-area:aside}
+   하도록 만든다. (4번 패널의 마크업 위치는 이제 3번 바로 뒤, aside보다
+   앞이다 — DOM 순서와 시각적 순서를 일치시키기 위해서다. grid-area 이름
+   기반 배치라 마크업 순서가 바뀌어도 화면에는 그대로 "1행 좌/우, 2행
+   전체 폭"으로 보인다.) */
+.layout{display:grid;grid-template-columns:minmax(700px,1.2fr) minmax(470px,.8fr);grid-template-areas:"left aside" "full full";gap:14px;align-items:stretch}
+/* 왼쪽 칸(2·3번)과 오른쪽 칸(5·6·7·8번)의 세로 높이를 맞춰 달라는 요청 —
+   내용 분량이 서로 달라 자연 높이가 다르므로, 두 칸 모두 flex column으로
+   만들어 grid가 늘려준 칸 높이(align-items:stretch)를 그대로 채우게 하고,
+   각 칸의 마지막 패널(3번 "시간대별 단가 조정", 8번 "계산 범위")이
+   남는 세로 공간을 흡수(flex:1 1 auto)하도록 한다 — 패널 사이 간격/디자인은
+   그대로 두고 마지막 패널만 아래쪽 여백이 늘어나는 방식으로 자연스럽게
+   높이가 같아진다. */
+.layout-left{grid-area:left;display:flex;flex-direction:column}
+.layout-left>.panel:last-child{flex:1 1 auto}
+.layout>aside{grid-area:aside;display:flex;flex-direction:column}
+.layout>aside>.panel:last-child{flex:1 1 auto}
 .layout-full{grid-area:full}
 .tab-row,.day-row,.legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.day-row{justify-content:space-between;margin:9px 0}.tab{border:1px solid #bccbc0;background:#fff;border-radius:999px;padding:7px 12px;cursor:pointer}.tab.active{background:var(--tou-brand);color:#fff}.check{display:flex!important;align-items:center;gap:6px}.check input{width:auto;margin:0}
 .legend{font-size:11px;color:var(--muted);margin:8px 0}.legend i{width:12px;height:12px;display:inline-block;border-radius:3px;margin-right:4px}.legend .off{background:var(--off)}.legend .mid{background:var(--mid)}.legend .peak{background:var(--peak)}
@@ -68,7 +78,7 @@ h2{font-size:17px;margin:0 0 12px}h3{font-size:14px;margin:15px 0 8px;color:var(
 .table input:focus{outline:2px solid var(--tou-brand);outline-offset:-2px;background:#fff}
 .chart{width:100%;height:285px;border:1px solid var(--line);border-radius:9px;background:#fff}
 .decomp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.decomp>div{border:1px solid var(--line);border-radius:9px;padding:10px}.decomp span{display:block;font-size:11px;color:var(--muted)}.decomp strong{display:block;font-size:16px;margin-top:5px}.notes{margin:0;padding-left:19px;font-size:12px;color:var(--muted);line-height:1.7}code{font-family:Consolas,monospace}
-@media(max-width:1150px){.layout{grid-template-columns:1fr;grid-template-areas:"left" "aside" "full"}.control-grid{grid-template-columns:repeat(2,1fr)}.kpi-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:720px){.hero{align-items:flex-start;flex-direction:column}.control-grid{grid-template-columns:1fr}.kpi-grid{grid-template-columns:1fr 1fr}.rate-layout{grid-template-columns:1fr}.hour-grid{grid-template-columns:repeat(6,1fr)}main{padding:9px}}
+@media(max-width:1150px){.layout{grid-template-columns:1fr;grid-template-areas:"left" "aside" "full"}.layout-left>.panel:last-child,.layout>aside>.panel:last-child{flex:none}.control-grid{grid-template-columns:repeat(2,1fr)}.kpi-grid{grid-template-columns:repeat(3,1fr)}}@media(max-width:720px){.hero{align-items:flex-start;flex-direction:column}.control-grid{grid-template-columns:1fr}.kpi-grid{grid-template-columns:1fr 1fr}.rate-layout{grid-template-columns:1fr}.hour-grid{grid-template-columns:repeat(6,1fr)}main{padding:9px}}
 
 /* v0.3.0 additions */
 .chart-controls{

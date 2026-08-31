@@ -426,8 +426,11 @@ function renderChart(){
   for(let i=0;i<24;i++){const xx=l+i*(w-l-rr)/24,ww=(w-l-rr)/24;if(day==="전체")out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="#eaf1ec"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8" fill="#5f7267">전체</text>`;else{const p=state.scenarioSchedule[state.activeSeason][day][i];out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="var(--${PERIOD_CLASS[p]})"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8">${p[0]}</text>`}}
   for(let k=0;k<=4;k++){const ratio=k/4,yy=t+(h-t-b)*ratio,tick=yMax-(yMax-yMin)*ratio;out+=`<line x1="${l}" y1="${yy}" x2="${w-rr}" y2="${yy}" stroke="#dde6e0"/><text x="${l-7}" y="${yy+4}" text-anchor="end" font-size="9" fill="#5f7267">${(tick/1e6).toFixed(1)}</text>`}
   out+=`<text x="8" y="${t-7}" font-size="9" fill="#5f7267">GWh/일</text><polyline points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#1f8a5f" stroke-width="3"/>`;
-  // 요청에 따라 선 위의 원형 마크(점)는 제거하고, 시간 눈금 라벨만 그대로 둔다.
-  vals.forEach((v,i)=>{if(i%2===0)out+=`<text x="${x(i)}" y="${h-13}" text-anchor="middle" font-size="9" fill="#5f7267">${i}</text>`});svg.innerHTML=out;
+  // 요청에 따라 선 위의 원형 마크(점)는 제거했다. 시간 눈금은 그래프가 화면
+  // 전체 폭으로 넓어져(4번 패널 전체 폭 배치) 24칸이 다 들어갈 공간이 있으므로,
+  // 짝수 시간만 걸러내던 것을 없애고 0~23시 전체를 표시한다(글자가 24개라
+  // 폰트 크기만 살짝 줄여 서로 겹치지 않게 한다).
+  vals.forEach((v,i)=>{out+=`<text x="${x(i)}" y="${h-13}" text-anchor="middle" font-size="8" fill="#5f7267">${i}</text>`});svg.innerHTML=out;
 }
 
 function updateWarning(){
