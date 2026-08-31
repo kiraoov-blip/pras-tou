@@ -43,6 +43,21 @@ const fmtEnergy=n=>{const a=Math.abs(n),s=n<0?"-":"";if(a>=1e9)return s+(a/1e9).
 const signedWon=n=>(n>=0?"+":"")+fmtWon(n);
 const cssSign=n=>n>=0?"pos":"neg";
 
+// ── KPI 카드 전용 표시 — PRAS-DER·CARE-Jeju의 metric-card와 동일하게 "숫자는
+// 소수 첫째자리까지 + 단위는 숫자보다 작은 글씨"로 통일한다. 위 fmtWon/fmtEnergy는
+// 단위별로 소수자리가 제각각(조원 3자리, 억원/만원 1자리 등)이고 단위가 숫자
+// 문자열 안에 그대로 붙어 있어(예: "3.63GWh") 그대로는 이 카드 스타일에 맞지
+// 않는다 — 값과 단위를 분리해 반환하는 전용 버전을 따로 둔다(표·다른 곳의
+// 기존 fmtWon/fmtEnergy 호출은 그대로 둔다).
+const splitWon=n=>{const a=Math.abs(n),s=n<0?"-":"";if(a>=1e12)return{value:s+(a/1e12).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"조원"};if(a>=1e8)return{value:s+(a/1e8).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"억원"};if(a>=1e4)return{value:s+(a/1e4).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"만원"};return{value:s+a.toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"원"}};
+const signedSplitWon=n=>{const r=splitWon(n);return{value:(n>=0?"+":"")+r.value,unit:r.unit}};
+// 분석 판매량 KPI는 GWh를 넘는 값(1TWh 이상)이어도 TWh로 올리지 않고 GWh
+// 단위로 고정해 달라는 요청 — 항상 1e6(=1GWh)로만 나눈다.
+const splitEnergyGWhCap=n=>{const a=Math.abs(n),s=n<0?"-":"";return{value:s+(a/1e6).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"GWh"}};
+/** strong 엘리먼트 안을 "값 + 더 작은 글씨의 단위(<small>)"로 채운다(PRAS-DER
+ * .metric-card strong small 패턴과 동일한 마크업 구조). */
+function setKpiValue(el,split){el.textContent="";el.append(document.createTextNode(split.value),Object.assign(document.createElement("small"),{textContent:split.unit}))}
+
 function sheetRows(wb,name){const ws=wb.Sheets[name];return ws?XLSX.utils.sheet_to_json(ws,{defval:"",raw:true}):[]}
 function normalizeSeason(v){const s=text(v).replace(/\s/g,"");if(["하계","여름","여름철"].includes(s))return"하계";if(["춘추계","봄가을","봄·가을","봄가을철","봄·가을철"].includes(s))return"춘추계";if(["동계","겨울","겨울철"].includes(s))return"동계";return s}
 function normalizeDayType(v){const s=text(v).replace(/\s/g,"");if(["평일","주중"].includes(s))return"평일";if(["토요일","토"].includes(s))return"토요일";if(["일·공휴일","일/공휴일","일공휴일","일요일·공휴일","일요일/공휴일","일요일","공휴일"].includes(s))return"일·공휴일";return s}
@@ -384,7 +399,7 @@ function calcVariant(kind){const res=emptyResult();for(const cat of selectedCats
 function calculate(){
   if(!state.scenarioSchedule||!state.scenarioRates)return;
   const base=calcVariant("base"),sch=calcVariant("schedule"),rat=calcVariant("rate"),fin=calcVariant("final"),delta=fin.totalRev-base.totalRev;
-  $("kUsage").textContent=fmtEnergy(fin.totalUsage);$("kPeriod").textContent=`${ymd(fin.minDate)}~${ymd(fin.maxDate)}`;$("kBase").textContent=fmtWon(base.totalRev);$("kScenario").textContent=fmtWon(fin.totalRev);$("kDelta").textContent=signedWon(delta);$("kDelta").className=cssSign(delta);$("kDeltaPct").textContent=base.totalRev?`${delta>=0?"+":""}${(delta/base.totalRev*100).toFixed(3)}%`:"-";$("kBaseAvg").textContent=base.totalUsage?(base.totalRev/base.totalUsage).toFixed(1):"-";$("kScenarioAvg").textContent=fin.totalUsage?(fin.totalRev/fin.totalUsage).toFixed(1):"-";
+  setKpiValue($("kUsage"),splitEnergyGWhCap(fin.totalUsage));$("kPeriod").textContent=`${ymd(fin.minDate)}~${ymd(fin.maxDate)}`;setKpiValue($("kBase"),splitWon(base.totalRev));setKpiValue($("kScenario"),splitWon(fin.totalRev));setKpiValue($("kDelta"),signedSplitWon(delta));$("kDelta").className=cssSign(delta);$("kDeltaPct").textContent=base.totalRev?`${delta>=0?"+":""}${(delta/base.totalRev*100).toFixed(1)}%`:"-";$("kBaseAvg").textContent=base.totalUsage?(base.totalRev/base.totalUsage).toFixed(1):"-";$("kScenarioAvg").textContent=fin.totalUsage?(fin.totalRev/fin.totalUsage).toFixed(1):"-";
   const ds=sch.totalRev-base.totalRev,dr=rat.totalRev-sch.totalRev,dd=fin.totalRev-rat.totalRev;for(const [id,v] of [["dSchedule",ds],["dRate",dr],["dDiscount",dd]]){$(id).textContent=signedWon(v);$(id).className=cssSign(v)}
   renderSeasonTable(base,fin);renderPeriodTable(base,fin);renderChart();state.lastResult={base,fin,ds,dr,dd};
 }
@@ -400,7 +415,7 @@ function aggregatedDailyRows(){
   return[...map.values()].sort((a,b)=>a.date-b.date);
 }
 function getGraphDaySeries(dayType){const rows=aggregatedDailyRows(),selected=dayType==="전체"?rows:rows.filter(r=>r.dayType===dayType),hourUsage=Array(24).fill(0);for(const r of selected)for(let h=0;h<24;h++)hourUsage[h]+=r.hours[h];return{vals:hourUsage.map(v=>selected.length?v/selected.length:0),rowCount:selected.length}}
-function getYAxisBounds(vals){const dataMin=Math.min(...vals),dataMax=Math.max(...vals),mode=$("yAxisMode").value;let yMin=0,yMax=Math.max(dataMax*1.08,1);if(mode==="zoom"){const span=Math.max(dataMax-dataMin,dataMax*.02,1);yMin=Math.max(0,dataMin-span*.18);yMax=dataMax+span*.18}else if(mode==="custom"){const a=number($("yAxisMin").value)*1e6,b=number($("yAxisMax").value)*1e6;if(b>a){yMin=a;yMax=b}else{const span=Math.max(dataMax-dataMin,dataMax*.02,1);yMin=Math.max(0,dataMin-span*.18);yMax=dataMax+span*.18}}if(yMax<=yMin)yMax=yMin+1;if(mode!=="custom"){$("yAxisMin").value=(yMin/1e6).toFixed(1);$("yAxisMax").value=(yMax/1e6).toFixed(1)}$("yAxisInfo").textContent=`현재 세로축 ${(yMin/1e6).toFixed(1)}~${(yMax/1e6).toFixed(1)}백만 kWh/일`;return{yMin,yMax}}
+function getYAxisBounds(vals){const dataMin=Math.min(...vals),dataMax=Math.max(...vals),mode=$("yAxisMode").value;let yMin=0,yMax=Math.max(dataMax*1.08,1);if(mode==="zoom"){const span=Math.max(dataMax-dataMin,dataMax*.02,1);yMin=Math.max(0,dataMin-span*.18);yMax=dataMax+span*.18}else if(mode==="custom"){const a=number($("yAxisMin").value)*1e6,b=number($("yAxisMax").value)*1e6;if(b>a){yMin=a;yMax=b}else{const span=Math.max(dataMax-dataMin,dataMax*.02,1);yMin=Math.max(0,dataMin-span*.18);yMax=dataMax+span*.18}}if(yMax<=yMin)yMax=yMin+1;if(mode!=="custom"){$("yAxisMin").value=(yMin/1e6).toFixed(1);$("yAxisMax").value=(yMax/1e6).toFixed(1)}$("yAxisInfo").textContent=`현재 세로축 ${(yMin/1e6).toFixed(1)}~${(yMax/1e6).toFixed(1)}GWh/일`;return{yMin,yMax}}
 function updateYAxisControlState(){const custom=$("yAxisMode").value==="custom";$("yAxisMin").disabled=!custom;$("yAxisMax").disabled=!custom}
 function renderChart(){
   const svg=$("loadChart"),w=900,h=285,l=64,rr=18,t=36,b=35,day=state.graphDayType,graph=getGraphDaySeries(day),vals=graph.vals;
@@ -410,8 +425,9 @@ function renderChart(){
   const {yMin,yMax}=getYAxisBounds(vals),x=i=>l+i*(w-l-rr)/23,y=v=>h-b-(v-yMin)/(yMax-yMin)*(h-t-b);let out="";
   for(let i=0;i<24;i++){const xx=l+i*(w-l-rr)/24,ww=(w-l-rr)/24;if(day==="전체")out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="#eef1f5"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8" fill="#687386">전체</text>`;else{const p=state.scenarioSchedule[state.activeSeason][day][i];out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="var(--${PERIOD_CLASS[p]})"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8">${p[0]}</text>`}}
   for(let k=0;k<=4;k++){const ratio=k/4,yy=t+(h-t-b)*ratio,tick=yMax-(yMax-yMin)*ratio;out+=`<line x1="${l}" y1="${yy}" x2="${w-rr}" y2="${yy}" stroke="#e4e8ed"/><text x="${l-7}" y="${yy+4}" text-anchor="end" font-size="9" fill="#687386">${(tick/1e6).toFixed(1)}</text>`}
-  out+=`<text x="8" y="${t-7}" font-size="9" fill="#687386">백만 kWh/일</text><polyline points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#2168df" stroke-width="3"/>`;
-  vals.forEach((v,i)=>{out+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.3" fill="#2168df"/>`;if(i%2===0)out+=`<text x="${x(i)}" y="${h-13}" text-anchor="middle" font-size="9" fill="#687386">${i}</text>`});svg.innerHTML=out;
+  out+=`<text x="8" y="${t-7}" font-size="9" fill="#687386">GWh/일</text><polyline points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#2168df" stroke-width="3"/>`;
+  // 요청에 따라 선 위의 원형 마크(점)는 제거하고, 시간 눈금 라벨만 그대로 둔다.
+  vals.forEach((v,i)=>{if(i%2===0)out+=`<text x="${x(i)}" y="${h-13}" text-anchor="middle" font-size="9" fill="#687386">${i}</text>`});svg.innerHTML=out;
 }
 
 function updateWarning(){

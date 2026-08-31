@@ -50,7 +50,7 @@
   </section>
 
   <div class="layout">
-    <div>
+    <div class="layout-left">
       <section class="panel">
         <h2>2. 시간대 구분 변경</h2>
         <p class="muted">계절과 요일을 선택한 뒤 시간 셀을 클릭하면 경부하 → 중간부하 → 최대부하 순으로 변경됨</p>
@@ -82,36 +82,6 @@
           <button class="btn rate-adjust" data-mult="0.95">전체 -5%</button>
         </div>
       </section>
-
-      <section class="panel">
-        <h2>4. 요일별 평균 부하곡선</h2>
-        <div id="graphDayTabs" class="tab-row graph-day-tabs">
-          <button data-graph-day="전체" class="tab active">전체</button>
-          <button data-graph-day="평일" class="tab">평일</button>
-          <button data-graph-day="토요일" class="tab">토요일</button>
-          <button data-graph-day="일·공휴일" class="tab">일·공휴일</button>
-        </div>
-        <div id="graphDayInfo" class="muted graph-day-info"></div>
-        <div class="chart-controls">
-          <label>세로축 표시
-            <select id="yAxisMode">
-              <option value="zoom" selected>확대 자동</option>
-              <option value="zero">0부터 자동</option>
-              <option value="custom">직접 입력</option>
-            </select>
-          </label>
-          <label>최소값(백만 kWh/일)
-            <input id="yAxisMin" type="number" step="0.1" min="0">
-          </label>
-          <label>최대값(백만 kWh/일)
-            <input id="yAxisMax" type="number" step="0.1" min="0">
-          </label>
-          <button id="applyYAxis" class="btn">세로축 적용</button>
-        </div>
-        <div id="yAxisInfo" class="muted chart-axis-info"></div>
-        <svg id="loadChart" class="chart" viewBox="0 0 900 285" preserveAspectRatio="none"></svg>
-        <p class="muted">‘전체’는 선택한 지역·종별의 전체 일평균 부하곡선임. 2025~2026년 계절·요일은 날짜와 요금 적용용 휴일기준으로 자동 생성함. 전국 분석의 시간대 색 띠는 육지 기준을 표시함.</p>
-      </section>
     </div>
 
     <aside>
@@ -138,6 +108,36 @@
         </ul>
       </section>
     </aside>
+
+    <section class="panel layout-full">
+      <h2>4. 요일별 평균 부하곡선</h2>
+      <div id="graphDayTabs" class="tab-row graph-day-tabs">
+        <button data-graph-day="전체" class="tab active">전체</button>
+        <button data-graph-day="평일" class="tab">평일</button>
+        <button data-graph-day="토요일" class="tab">토요일</button>
+        <button data-graph-day="일·공휴일" class="tab">일·공휴일</button>
+      </div>
+      <div id="graphDayInfo" class="muted graph-day-info"></div>
+      <div class="chart-controls">
+        <label>세로축 표시
+          <select id="yAxisMode">
+            <option value="zoom" selected>확대 자동</option>
+            <option value="zero">0부터 자동</option>
+            <option value="custom">직접 입력</option>
+          </select>
+        </label>
+        <label>최소값(GWh/일)
+          <input id="yAxisMin" type="number" step="0.1" min="0">
+        </label>
+        <label>최대값(GWh/일)
+          <input id="yAxisMax" type="number" step="0.1" min="0">
+        </label>
+        <button id="applyYAxis" class="btn">세로축 적용</button>
+      </div>
+      <div id="yAxisInfo" class="muted chart-axis-info"></div>
+      <svg id="loadChart" class="chart" viewBox="0 0 900 285" preserveAspectRatio="none"></svg>
+      <p class="muted">‘전체’는 선택한 지역·종별의 전체 일평균 부하곡선임. 2025~2026년 계절·요일은 날짜와 요금 적용용 휴일기준으로 자동 생성함. 전국 분석의 시간대 색 띠는 육지 기준을 표시함.</p>
+    </section>
   </div>
 </main>
 
