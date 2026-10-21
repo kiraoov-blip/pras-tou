@@ -1,0 +1,26 @@
+# pras-tou에 파일을 올리면(main에 push) pras-der의 통합 배포를 바로 실행해
+# simulator-kepco.co.kr/tou/ 에 즉시 반영되게 한다.
+# 필요한 것: 이 저장소 Settings → Secrets and variables → Actions 에
+#   HUB_DEPLOY_TOKEN (pras-der 저장소 Actions: Read and write 권한 토큰)
+name: 허브 사이트 배포 요청
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    name: pras-der 통합 배포 실행
+    runs-on: ubuntu-latest
+    steps:
+      - name: 배포 요청 보내기
+        env:
+          GH_TOKEN: ${{ secrets.HUB_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::HUB_DEPLOY_TOKEN 비밀값이 없습니다. Settings → Secrets and variables → Actions 에 등록하세요."
+            exit 1
+          fi
+          gh workflow run deploy-pages.yml --repo kiraoov-blip/pras-der --ref main
+          echo "pras-der 배포를 요청했습니다. pras-der의 Actions 탭에서 진행 상황을 볼 수 있습니다."
