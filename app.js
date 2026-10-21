@@ -1,4 +1,4 @@
-console.info("PRAS - TOU mobile responsive model v0.5.1 loaded");
+console.info("PRAS - TOU model v0.6.0 loaded (목표 효과 역산)");
 
 const META_URL="./data/tou_data.xlsx";
 const LAND_URL="./data/usage_land.xlsx";
@@ -26,7 +26,12 @@ const state={
   selectedCategory:"ALL_TOU",
   activeSeason:"하계",graphDayType:"전체",
   scenarioSchedule:null,scenarioRates:null,
-  lastResult:null,
+  // 전체종별은 종별마다 요금표가 달라 단가표를 직접 고칠 수 없으므로, 종별
+  // 요금표(allRateVersion)에 계절·시간대별 배율(rateMult)을 곱해 단가를 조정한다.
+  allRateVersion:"POST",rateMult:null,
+  // 시나리오 주말 할인율(토·일·공휴일 11~14시, 산업용(을)·EV). 0.5 = 50% 할인.
+  discountRates:null,discountForce:null,
+  lastResult:null,solverProposal:null,
 };
 
 const $=id=>document.getElementById(id);
@@ -51,9 +56,13 @@ const cssSign=n=>n>=0?"pos":"neg";
 // 기존 fmtWon/fmtEnergy 호출은 그대로 둔다).
 const splitWon=n=>{const a=Math.abs(n),s=n<0?"-":"";if(a>=1e12)return{value:s+(a/1e12).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"조원"};if(a>=1e8)return{value:s+(a/1e8).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"억원"};if(a>=1e4)return{value:s+(a/1e4).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"만원"};return{value:s+a.toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"원"}};
 const signedSplitWon=n=>{const r=splitWon(n);return{value:(n>=0?"+":"")+r.value,unit:r.unit}};
-// 분석 판매량 KPI는 GWh를 넘는 값(1TWh 이상)이어도 TWh로 올리지 않고 GWh
-// 단위로 고정해 달라는 요청 — 항상 1e6(=1GWh)로만 나눈다.
-const splitEnergyGWhCap=n=>{const a=Math.abs(n),s=n<0?"-":"";return{value:s+(a/1e6).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1}),unit:"GWh"}};
+// 분석 판매량 KPI는 항상 TWh 단위로 표시한다(요청). 전국·전체종별은 수백 TWh,
+// 특정 요금제만 고르면 1TWh 미만도 나오므로 값 크기에 따라 소수자리만 늘린다.
+const splitEnergyTWh=n=>{const a=Math.abs(n),s=n<0?"-":"",t=a/1e9,d=t>=100?1:t>=1?2:3;return{value:s+t.toLocaleString("ko-KR",{minimumFractionDigits:d,maximumFractionDigits:d}),unit:"TWh"}};
+const eok=n=>(n/1e8).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1});
+const signedEok=n=>(n>=0?"+":"")+eok(n);
+const seasonLabel=s=>s==="춘추계"?"봄·가을철":s==="동계"?"겨울철":s;
+const pct=(v,d=1)=>(v*100).toLocaleString("ko-KR",{minimumFractionDigits:d,maximumFractionDigits:d})+"%";
 /** strong 엘리먼트 안을 "값 + 더 작은 글씨의 단위(<small>)"로 채운다(PRAS-DER
  * .metric-card strong small 패턴과 동일한 마크업 구조). */
 function setKpiValue(el,split){el.textContent="";el.append(document.createTextNode(split.value),Object.assign(document.createElement("small"),{textContent:split.unit}))}
@@ -242,7 +251,13 @@ function populateChoice(){
 function updateWeekendDiscountControl(){
   const cat=selectedCategoryId(),eligible=["IND_EUL","EV","ALL_TOU"].includes(cat),box=$("useScenarioDiscount"),label=$("weekendDiscountLabel");
   box.disabled=!eligible;box.checked=eligible;label.classList.toggle("disabled",!eligible);
-  label.title=eligible?"산업용(을)·EV의 봄·가을철 주말 11~14시 전력량요금 50% 할인":"해당 종별에는 50% 주말할인이 적용되지 않음";
+  label.title=eligible?"산업용(을)·EV의 주말(토·일·공휴일) 11~14시 전력량요금 할인":"해당 종별에는 주말할인이 적용되지 않음";
+}
+function updateWeekendDiscountText(){
+  const r=state.discountRates;if(!r)return;
+  const on=SEASONS.filter(s=>r[s]>0).map(s=>`${seasonLabel(s)} ${pct(r[s],r[s]*1000%10?1:0)}`);
+  $("weekendDiscountText").textContent=on.length?`주말 할인 적용(${on.join(", ")})`:"주말 할인 적용(할인율 0%)";
+  document.querySelectorAll(".disc-rate").forEach(i=>{if(document.activeElement!==i)i.value=Math.round(r[i.dataset.season]*1000)/10});
 }
 
 function weightYears(){
@@ -330,11 +345,23 @@ function buildDefaultSchedule(version,region){
   }}}
   return schedule;
 }
-function buildDiscount(cat,version){
+const DISCOUNT_CATS=["IND_EUL","EV"];
+const DISCOUNT_HOURS=[11,12,13]; // 11~14시
+function discountMatrix(cat,rates){
   const d={};for(const s of SEASONS){d[s]={};for(const day of DAY_TYPES)d[s][day]=Array(24).fill(1)}
-  if(version==="POST"&&["IND_EUL","EV"].includes(cat))for(const day of ["토요일","일·공휴일"])for(let h=11;h<14;h++)d["춘추계"][day][h]=0.5;
+  if(DISCOUNT_CATS.includes(cat))for(const s of SEASONS)if(rates[s]>0)for(const day of ["토요일","일·공휴일"])for(const h of DISCOUNT_HOURS)d[s][day][h]=1-rates[s];
   return d;
 }
+function defaultDiscountRates(version){return{"하계":0,"춘추계":version==="POST"?0.5:0,"동계":0}}
+// 기준안 할인은 요금표 규정 그대로(개편 후: 봄·가을철 50%), 시나리오 할인은
+// 사용자가 정한(또는 9번 역산으로 찾은) 계절별 할인율을 쓴다.
+function buildDiscount(cat,version){return discountMatrix(cat,defaultDiscountRates(version))}
+function scenarioDiscountFor(cat){return discountMatrix(cat,state.discountRates||defaultDiscountRates($("scenarioVersion").value))}
+function discountEnabled(){return state.discountForce??$("useScenarioDiscount").checked}
+function emptyRateMult(){const m={};for(const s of SEASONS){m[s]={};for(const p of PERIODS)m[s][p]=1}return m}
+function applyMult(r,mult){const out={};for(const s of SEASONS){out[s]={};for(const p of PERIODS)out[s][p]=r[s][p]*(mult?mult[s][p]:1)}return out}
+function scenarioRatesFor(cat){return selectedCategoryId()==="ALL_TOU"?applyMult(buildRates(cat,state.allRateVersion),state.rateMult):state.scenarioRates}
+function allTouDisplayRates(){const r=applyMult(aggregateRateTable(state.allRateVersion),state.rateMult);for(const s of SEASONS)for(const p of PERIODS)r[s][p]=Math.round(r[s][p]*10)/10;return r}
 function scenarioScheduleForRegion(region){
   if(selectedRegion()==="NATIONAL")return region==="LAND"?state.scenarioSchedule:buildDefaultSchedule($("scenarioVersion").value,"JEJU");
   return state.scenarioSchedule;
@@ -346,20 +373,25 @@ function rowIncluded(r){return analysisYears().includes(r.year)&&($("scope").val
 
 function loadScenarioPreset(){
   if(!state.usage.LAND.IND_EUL)return;
-  state.scenarioSchedule=buildDefaultSchedule($("scenarioVersion").value,editingRegion());
-  state.scenarioRates=selectedCategoryId()==="ALL_TOU"?aggregateRateTable($("scenarioVersion").value):buildRates(selectedCategoryId(),$("scenarioVersion").value);
+  setScenarioFromVersion($("scenarioVersion").value);
+}
+function copyBase(){setScenarioFromVersion($("baseVersion").value)}
+// "기준안과 동일하게"를 눌렀을 때 전체종별은 화면 단가표만 기준안으로 바뀌고
+// 실제 계산은 여전히 시나리오 버전 요금표를 쓰던 문제가 있어, 계산에 쓰는
+// 요금표 버전(allRateVersion)과 주말 할인율도 함께 바꾼다.
+function setScenarioFromVersion(version){
+  state.scenarioSchedule=buildDefaultSchedule(version,editingRegion());
+  state.allRateVersion=version;state.rateMult=emptyRateMult();
+  state.scenarioRates=selectedCategoryId()==="ALL_TOU"?allTouDisplayRates():buildRates(selectedCategoryId(),version);
+  state.discountRates=defaultDiscountRates(version);
+  clearSolverResult();
   renderAll();
 }
-function copyBase(){
-  state.scenarioSchedule=buildDefaultSchedule($("baseVersion").value,editingRegion());
-  state.scenarioRates=selectedCategoryId()==="ALL_TOU"?aggregateRateTable($("baseVersion").value):buildRates(selectedCategoryId(),$("baseVersion").value);
-  renderAll();
-}
-function renderAll(){renderHours();renderScheduleCompare();renderRates();calculate();updateWarning()}
+function renderAll(){renderHours();renderScheduleCompare();renderRates();updateWeekendDiscountText();calculate();updateWarning()}
 function renderHours(){
   const day=$("dayType").value,a=state.scenarioSchedule?.[state.activeSeason]?.[day]||[];
   $("hourGrid").innerHTML=a.map((p,h)=>`<div class="hour ${PERIOD_CLASS[p]}" data-hour="${h}"><b>${String(h).padStart(2,"0")}~${String((h+1)%24).padStart(2,"0")}</b>${p}</div>`).join("");
-  document.querySelectorAll(".hour").forEach(el=>el.onclick=()=>{const h=number(el.dataset.hour),c=state.scenarioSchedule[state.activeSeason][day][h];state.scenarioSchedule[state.activeSeason][day][h]=PERIODS[(PERIODS.indexOf(c)+1)%3];renderAll()});
+  document.querySelectorAll(".hour").forEach(el=>el.onclick=()=>{const h=number(el.dataset.hour),c=state.scenarioSchedule[state.activeSeason][day][h];state.scenarioSchedule[state.activeSeason][day][h]=PERIODS[(PERIODS.indexOf(c)+1)%3];clearSolverResult();renderAll()});
 }
 function renderScheduleCompare(){
   const day=$("dayType").value;
@@ -371,37 +403,48 @@ function renderScheduleCompare(){
 function rateTable(r,editable){let h=`<thead><tr><th>계절</th>${PERIODS.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;for(const s of SEASONS){h+=`<tr><td>${s==="춘추계"?"봄·가을철":s}</td>`;for(const p of PERIODS)h+=editable?`<td><input type="number" step="0.1" data-season="${s}" data-period="${p}" value="${r[s][p].toFixed(1)}"></td>`:`<td>${r[s][p].toFixed(1)}</td>`;h+="</tr>"}return h+"</tbody>"}
 function renderRates(){
   const allCat=selectedCategoryId()==="ALL_TOU",base=allCat?aggregateRateTable($("baseVersion").value):buildRates(selectedCategoryId(),$("baseVersion").value);
+  if(allCat)state.scenarioRates=allTouDisplayRates();
   $("baseRates").innerHTML=rateTable(base,false);$("scenarioRates").innerHTML=rateTable(state.scenarioRates,!allCat);
-  if(!allCat)document.querySelectorAll("#scenarioRates input").forEach(i=>i.oninput=()=>{state.scenarioRates[i.dataset.season][i.dataset.period]=number(i.value);calculate()});
+  if(!allCat)document.querySelectorAll("#scenarioRates input").forEach(i=>i.oninput=()=>{state.scenarioRates[i.dataset.season][i.dataset.period]=number(i.value);clearSolverResult();calculate()});
   document.querySelectorAll(".rate-adjust").forEach(b=>b.disabled=allCat);
 }
 
-function emptyResult(){const bySeason={},byPeriod={};SEASONS.forEach(s=>bySeason[s]={usage:0,rev:0});PERIODS.forEach(p=>byPeriod[p]={usage:0,rev:0});return{totalUsage:0,totalRev:0,bySeason,byPeriod,minDate:null,maxDate:null,breakdown:{}}}
-function mergeResult(dst,src,cat){dst.totalUsage+=src.totalUsage;dst.totalRev+=src.totalRev;if(!dst.minDate||src.minDate<dst.minDate)dst.minDate=src.minDate;if(!dst.maxDate||src.maxDate>dst.maxDate)dst.maxDate=src.maxDate;for(const s of SEASONS){dst.bySeason[s].usage+=src.bySeason[s].usage;dst.bySeason[s].rev+=src.bySeason[s].rev}for(const p of PERIODS){dst.byPeriod[p].usage+=src.byPeriod[p].usage;dst.byPeriod[p].rev+=src.byPeriod[p].rev}dst.breakdown[cat]=(dst.breakdown[cat]||0)+src.totalRev}
+function emptyResult(){const bySeason={},byPeriod={},bySP={},win={};SEASONS.forEach(s=>{bySeason[s]={usage:0,rev:0};win[s]=0;bySP[s]={};PERIODS.forEach(p=>bySP[s][p]=0)});PERIODS.forEach(p=>byPeriod[p]={usage:0,rev:0});return{totalUsage:0,totalRev:0,bySeason,byPeriod,bySP,win,minDate:null,maxDate:null,breakdown:{}}}
+function mergeResult(dst,src,cat){dst.totalUsage+=src.totalUsage;dst.totalRev+=src.totalRev;if(!dst.minDate||src.minDate<dst.minDate)dst.minDate=src.minDate;if(!dst.maxDate||src.maxDate>dst.maxDate)dst.maxDate=src.maxDate;for(const s of SEASONS){dst.bySeason[s].usage+=src.bySeason[s].usage;dst.bySeason[s].rev+=src.bySeason[s].rev;dst.win[s]+=src.win[s];for(const p of PERIODS)dst.bySP[s][p]+=src.bySP[s][p]}for(const p of PERIODS){dst.byPeriod[p].usage+=src.byPeriod[p].usage;dst.byPeriod[p].rev+=src.byPeriod[p].rev}dst.breakdown[cat]=(dst.breakdown[cat]||0)+src.totalRev}
 function calcPart(cat,region,kind){
   const rows=(state.usage[region][cat]||[]).filter(rowIncluded),factor=yearFactor(),res=emptyResult();
-  const baseVer=$("baseVersion").value,scVer=$("scenarioVersion").value;
+  const baseVer=$("baseVersion").value;
   const schedule=kind==="base"?buildDefaultSchedule(baseVer,region):scenarioScheduleForRegion(region);
-  const rates=kind==="base"||kind==="schedule"?buildRates(cat,baseVer):(selectedCategoryId()==="ALL_TOU"?buildRates(cat,scVer):state.scenarioRates);
-  const discount=kind==="final"?buildDiscount(cat,scVer):buildDiscount(cat,baseVer);
-  const useDiscount=kind!=="final"||$("useScenarioDiscount").checked;
+  const rates=kind==="base"||kind==="schedule"?buildRates(cat,baseVer):scenarioRatesFor(cat);
+  const discount=kind==="final"?scenarioDiscountFor(cat):buildDiscount(cat,baseVer);
+  const useDiscount=kind!=="final"||discountEnabled();
+  const eligible=DISCOUNT_CATS.includes(cat),scaleCache={};
   for(const r of rows){
     if(!res.minDate||r.date<res.minDate)res.minDate=r.date;if(!res.maxDate||r.date>res.maxDate)res.maxDate=r.date;
-    const scale=factor*usageScale(cat,r.year);
+    const scale=scaleCache[r.year]??=factor*usageScale(cat,r.year),weekend=r.dayType!=="평일",sp=res.bySP[r.season];
     for(let h=0;h<24;h++){
-      const q=r.hours[h]*scale,p=schedule[r.season][r.dayType][h],dm=useDiscount?discount[r.season][r.dayType][h]:1,rev=q*rates[r.season][p]*dm;
-      res.totalUsage+=q;res.totalRev+=rev;res.bySeason[r.season].usage+=q;res.bySeason[r.season].rev+=rev;res.byPeriod[p].usage+=q;res.byPeriod[p].rev+=rev;
+      const q=r.hours[h]*scale,p=schedule[r.season][r.dayType][h],dm=useDiscount?discount[r.season][r.dayType][h]:1,gross=q*rates[r.season][p],rev=gross*dm;
+      res.totalUsage+=q;res.totalRev+=rev;res.bySeason[r.season].usage+=q;res.bySeason[r.season].rev+=rev;res.byPeriod[p].usage+=q;res.byPeriod[p].rev+=rev;sp[p]+=rev;
+      // 주말 할인 구간(할인 전 금액) — 9번 역산에서 할인율 1%p당 매출 변화를 구하는 데 쓴다
+      if(eligible&&weekend&&h>=11&&h<14)res.win[r.season]+=gross;
     }
   }
   return res;
 }
 function calcVariant(kind){const res=emptyResult();for(const cat of selectedCats())for(const rg of selectedRegions())mergeResult(res,calcPart(cat,rg,kind),cat);return res}
+function computeEffects(){const base=calcVariant("base"),sch=calcVariant("schedule"),rat=calcVariant("rate"),fin=calcVariant("final");return{base,sch,rat,fin,ds:sch.totalRev-base.totalRev,dr:rat.totalRev-sch.totalRev,dd:fin.totalRev-rat.totalRev}}
 function calculate(){
   if(!state.scenarioSchedule||!state.scenarioRates)return;
-  const base=calcVariant("base"),sch=calcVariant("schedule"),rat=calcVariant("rate"),fin=calcVariant("final"),delta=fin.totalRev-base.totalRev;
-  setKpiValue($("kUsage"),splitEnergyGWhCap(fin.totalUsage));$("kPeriod").textContent=`${ymd(fin.minDate)}~${ymd(fin.maxDate)}`;setKpiValue($("kBase"),splitWon(base.totalRev));setKpiValue($("kScenario"),splitWon(fin.totalRev));setKpiValue($("kDelta"),signedSplitWon(delta));$("kDelta").className=cssSign(delta);$("kDeltaPct").textContent=base.totalRev?`${delta>=0?"+":""}${(delta/base.totalRev*100).toFixed(1)}%`:"-";$("kBaseAvg").textContent=base.totalUsage?(base.totalRev/base.totalUsage).toFixed(1):"-";$("kScenarioAvg").textContent=fin.totalUsage?(fin.totalRev/fin.totalUsage).toFixed(1):"-";
-  const ds=sch.totalRev-base.totalRev,dr=rat.totalRev-sch.totalRev,dd=fin.totalRev-rat.totalRev;for(const [id,v] of [["dSchedule",ds],["dRate",dr],["dDiscount",dd]]){$(id).textContent=signedWon(v);$(id).className=cssSign(v)}
+  const e=computeEffects(),{base,fin,ds,dr,dd}=e,delta=fin.totalRev-base.totalRev;
+  setKpiValue($("kUsage"),splitEnergyTWh(fin.totalUsage));$("kPeriod").textContent=`${ymd(fin.minDate)}~${ymd(fin.maxDate)}`;setKpiValue($("kBase"),splitWon(base.totalRev));setKpiValue($("kScenario"),splitWon(fin.totalRev));setKpiValue($("kDelta"),signedSplitWon(delta));$("kDelta").className=cssSign(delta);$("kDeltaPct").textContent=base.totalRev?`${delta>=0?"+":""}${(delta/base.totalRev*100).toFixed(1)}%`:"-";
+  const bAvg=base.totalUsage?base.totalRev/base.totalUsage:0,sAvg=fin.totalUsage?fin.totalRev/fin.totalUsage:0,dAvg=sAvg-bAvg;
+  $("kBaseAvg").textContent=base.totalUsage?bAvg.toFixed(1):"-";$("kScenarioAvg").textContent=fin.totalUsage?sAvg.toFixed(1):"-";
+  setKpiValue($("kAvgDiff"),{value:(dAvg>=0?"+":"")+dAvg.toFixed(1),unit:"원/kWh"});$("kAvgDiff").className=cssSign(dAvg);$("kAvgDiffPct").textContent=bAvg?`${dAvg>=0?"+":""}${(dAvg/bAvg*100).toFixed(1)}% (시나리오 − 기준)`:"-";
+  const bPeak=base.totalUsage?base.byPeriod["최대부하"].usage/base.totalUsage:0,sPeak=fin.totalUsage?fin.byPeriod["최대부하"].usage/fin.totalUsage:0,dPeak=(sPeak-bPeak)*100;
+  setKpiValue($("kPeakShare"),{value:(sPeak*100).toFixed(1),unit:"%"});$("kPeakShareNote").textContent=`기준 ${(bPeak*100).toFixed(1)}% → ${dPeak>=0?"+":""}${dPeak.toFixed(1)}%p`;
+  for(const [id,v] of [["dSchedule",ds],["dRate",dr],["dDiscount",dd]]){$(id).textContent=signedWon(v);$(id).className=cssSign(v)}
   renderSeasonTable(base,fin);renderPeriodTable(base,fin);renderChart();state.lastResult={base,fin,ds,dr,dd};
+  updateSolverCurrent(e);
 }
 function renderSeasonTable(b,f){let h="<thead><tr><th>계절</th><th>기준안</th><th>시나리오</th><th>증감</th></tr></thead><tbody>";for(const s of SEASONS){const d=f.bySeason[s].rev-b.bySeason[s].rev;h+=`<tr><td>${s==="춘추계"?"봄·가을철":s}</td><td>${fmtWon(b.bySeason[s].rev)}</td><td>${fmtWon(f.bySeason[s].rev)}</td><td class="${cssSign(d)}">${signedWon(d)}</td></tr>`}$("seasonTable").innerHTML=h+"</tbody>"}
 function renderPeriodTable(b,f){let h="<thead><tr><th>시간대</th><th>기준 사용량</th><th>시나리오 사용량</th><th>변화</th></tr></thead><tbody>";for(const p of PERIODS){const d=f.byPeriod[p].usage-b.byPeriod[p].usage;h+=`<tr><td>${p}</td><td>${fmtEnergy(b.byPeriod[p].usage)}</td><td>${fmtEnergy(f.byPeriod[p].usage)}</td><td class="${cssSign(d)}">${d>=0?"+":""}${fmtEnergy(d)}</td></tr>`}$("periodTable").innerHTML=h+"</tbody>"}
@@ -461,11 +504,153 @@ function updateWarning(){
 
 function exportCsv(){
   const r=state.lastResult;if(!r)return;
-  const rows=[["항목","값"],["분석지역",$("region").selectedOptions[0].textContent],["분석종별",$("category").selectedOptions[0].textContent],["연도",$("year").selectedOptions[0].textContent],["범위",$("scope").selectedOptions[0].textContent],["고객범위",$("customerScope").selectedOptions[0].textContent],["계약전력구간",$("contract").value],["전압구분",$("voltage").value],["선택요금",$("choice").value],["기준안 매출(원)",r.base.totalRev],["시나리오 매출(원)",r.fin.totalRev],["증감액(원)",r.fin.totalRev-r.base.totalRev],["시간대 효과(원)",r.ds],["단가 효과(원)",r.dr],["주말 할인 효과(원)",r.dd],[],["계절","기준안(원)","시나리오(원)","증감(원)"]];
+  const rows=[["항목","값"],["분석지역",$("region").selectedOptions[0].textContent],["분석종별",$("category").selectedOptions[0].textContent],["연도",$("year").selectedOptions[0].textContent],["범위",$("scope").selectedOptions[0].textContent],["고객범위",$("customerScope").selectedOptions[0].textContent],["계약전력구간",$("contract").value],["전압구분",$("voltage").value],["선택요금",$("choice").value],["기준안 매출(원)",r.base.totalRev],["시나리오 매출(원)",r.fin.totalRev],["증감액(원)",r.fin.totalRev-r.base.totalRev],["시간대 효과(원)",r.ds],["단가 효과(원)",r.dr],["주말 할인 효과(원)",r.dd],["기준 평균단가(원/kWh)",r.base.totalUsage?r.base.totalRev/r.base.totalUsage:""],["시나리오 평균단가(원/kWh)",r.fin.totalUsage?r.fin.totalRev/r.fin.totalUsage:""],["시나리오 주말 할인율(하계/봄·가을/겨울)",SEASONS.map(x=>pct(state.discountRates[x])).join(" / ")],[],["계절","기준안(원)","시나리오(원)","증감(원)"]];
   for(const s of SEASONS)rows.push([s,r.base.bySeason[s].rev,r.fin.bySeason[s].rev,r.fin.bySeason[s].rev-r.base.bySeason[s].rev]);
   if(selectedCategoryId()==="ALL_TOU"){rows.push([], ["종별","기준안(원)","시나리오(원)","증감(원)"]);for(const cat of SINGLE_CATEGORY_IDS)rows.push([catMeta(cat).name,r.base.breakdown[cat]||0,r.fin.breakdown[cat]||0,(r.fin.breakdown[cat]||0)-(r.base.breakdown[cat]||0)])}
   const csv="\ufeff"+rows.map(row=>row.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\r\n"),blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="PRAS_TOU_매출_분석결과.csv";a.click();URL.revokeObjectURL(a.href);
 }
+
+// ───────────────────────── 9. 목표 효과 역산 ─────────────────────────
+// 5번 요인분해는 "시간대 변경 → 단가 변경 → 주말 할인" 순서의 순차효과이므로,
+// 역산도 같은 순서로 하나씩 맞춘다. 앞 단계(시간대)를 바꾸면 뒤 단계(단가·할인)
+// 효과도 함께 움직이기 때문에, 각 단계는 앞 단계 결과를 반영한 상태에서 푼다.
+// 모든 조정은 선택한 계절 안에서만 일어난다.
+const SOLVER_KEYS=["scenarioSchedule","scenarioRates","rateMult","discountRates","discountForce"];
+function withOverride(o,fn){const saved={};for(const k of SOLVER_KEYS){saved[k]=state[k];if(k in o)state[k]=o[k]}try{return fn()}finally{Object.assign(state,saved)}}
+function solverSeasons(){const v=$("solveSeason").value;return v==="ALL"?SEASONS:[v]}
+function solverBands(){return[...document.querySelectorAll(".solve-band")].filter(x=>x.checked).map(x=>x.value)}
+function readTarget(id){const v=$(id).value.trim();return v===""?null:number(v)*1e8}
+function scheduleRegions(){return selectedRegion()==="NATIONAL"?["LAND"]:[selectedRegion()]}
+const satBand=b=>b==="최대부하"?"중간부하":b;
+
+// 시간대 효과 = 시나리오 시간대 + 기준 단가 + 기준 할인. 시간 h를 어느 시간대로
+// 두느냐에 따른 매출을 시간·시간대별로 미리 합산해 두면 시간대를 바꿀 때의
+// 효과 변화를 즉시 더하고 뺄 수 있다(부하이동이 없으므로 정확히 더해짐).
+function scheduleContrib(seasons){
+  const A={},baseVer=$("baseVersion").value,factor=yearFactor();
+  for(const s of seasons){A[s]={};for(const d of ["평일","토요일"])A[s][d]=Array.from({length:24},()=>({"경부하":0,"중간부하":0,"최대부하":0}))}
+  for(const cat of selectedCats()){
+    const rates=buildRates(cat,baseVer),disc=buildDiscount(cat,baseVer),scaleCache={};
+    for(const rg of scheduleRegions())for(const r of (state.usage[rg][cat]||[])){
+      if(r.dayType==="일·공휴일"||!seasons.includes(r.season)||!rowIncluded(r))continue;
+      const scale=scaleCache[r.year]??=factor*usageScale(cat,r.year),cell=A[r.season][r.dayType],rt=rates[r.season];
+      for(let h=0;h<24;h++){const q=r.hours[h]*scale*disc[r.season][r.dayType][h];if(!q)continue;const c=cell[h];c["경부하"]+=q*rt["경부하"];c["중간부하"]+=q*rt["중간부하"];c["최대부하"]+=q*rt["최대부하"]}
+    }
+  }
+  return A;
+}
+// 평일 시간대를 시간 단위로 바꾸고 토요일은 요금표 규칙(평일 최대부하 → 토요일
+// 중간부하)을 따른다. 일·공휴일은 종일 경부하 그대로. 목표에 가장 가깝게
+// 맞추되, 오차가 허용범위 안이면 바꾸는 시간 수가 가장 적은 안을 고른다(동적계획법).
+function solveSchedule(targetDelta,seasons,keepNight){
+  const A=scheduleContrib(seasons),sched=state.scenarioSchedule,vars=[];
+  for(const s of seasons)for(let h=0;h<24;h++){
+    if(keepNight&&(h>=22||h<8))continue;
+    const curW=sched[s]["평일"][h],curS=sched[s]["토요일"][h],cur=A[s]["평일"][h][curW]+A[s]["토요일"][h][curS],opts=[];
+    for(const b of PERIODS){if(b===curW||(keepNight&&b==="경부하"))continue;const val=A[s]["평일"][h][b]+A[s]["토요일"][h][satBand(b)]-cur;opts.push({b,sat:satBand(b),val})}
+    if(opts.some(o=>Math.abs(o.val)>1))vars.push({s,h,curW,curS,opts});
+  }
+  let lo=0,hi=0;for(const v of vars){lo+=Math.min(0,...v.opts.map(o=>o.val));hi+=Math.max(0,...v.opts.map(o=>o.val))}
+  const bin=Math.max((hi-lo)/4000,1),layers=[];let cur=new Map([[0,{c:0,sum:0}]]);
+  for(const v of vars){
+    const next=new Map(),relax=(k,c,sum,prev,choice)=>{const e=next.get(k);if(!e||c<e.c||(c===e.c&&Math.abs(sum-targetDelta)<Math.abs(e.sum-targetDelta)))next.set(k,{c,sum,prev,choice})};
+    for(const [k,st] of cur){relax(k,st.c,st.sum,k,-1);v.opts.forEach((o,i)=>{const sum=st.sum+o.val;relax(Math.round(sum/bin),st.c+1,sum,k,i)})}
+    layers.push(next);cur=next;
+  }
+  const tol=Math.max(bin*1.5,Math.abs(targetDelta)*0.003);let bestK=null,best=null;
+  for(const [k,st] of cur){const err=Math.abs(st.sum-targetDelta),ok=err<=tol;const better=!best||(ok&&!best.ok)||(ok===best.ok&&(ok?(st.c<best.st.c||(st.c===best.st.c&&err<best.err)):err<best.err));if(better){best={st,err,ok};bestK=k}}
+  const newSchedule=clone(sched),changes=[];let k=bestK;
+  for(let i=layers.length-1;i>=0;i--){const st=layers[i].get(k);if(st.choice>=0){const v=vars[i],o=v.opts[st.choice];newSchedule[v.s]["평일"][v.h]=o.b;newSchedule[v.s]["토요일"][v.h]=o.sat;changes.push({s:v.s,h:v.h,from:v.curW,to:o.b,satFrom:v.curS,satTo:o.sat})}k=st.prev}
+  changes.sort((a,b)=>SEASONS.indexOf(a.s)-SEASONS.indexOf(b.s)||a.h-b.h);
+  return{newSchedule,changes,achieved:best.st.sum,reachable:best.ok,lo,hi};
+}
+// 단가 효과 = 시나리오 단가로 바꿨을 때의 매출 변화. 선택 계절·시간대 단가에
+// 같은 배율 f를 곱하면 효과가 f에 정비례하므로 한 번에 풀린다.
+function solveRates(target,e,seasons,bands){
+  const R=seasons.reduce((s,se)=>s+bands.reduce((a,p)=>a+e.rat.bySP[se][p],0),0);
+  if(!bands.length)return{error:"단가 조정 대상 시간대를 하나 이상 선택해야 함"};
+  if(R<=0)return{error:"선택한 계절·시간대에 해당하는 매출이 없어 단가로 조정할 수 없음"};
+  const f=1+(target-e.dr)/R;
+  if(f<=0)return{error:`목표를 맞추려면 단가를 ${pct(1-f)} 이상 내려야 해 불가능함`};
+  const out={f,rateMult:clone(state.rateMult),scenarioRates:clone(state.scenarioRates),before:{},after:{}};
+  for(const s of seasons)for(const p of bands){
+    out.before[s+p]=state.scenarioRates[s][p];
+    if(selectedCategoryId()==="ALL_TOU")out.rateMult[s][p]*=f;else out.scenarioRates[s][p]=Math.round(state.scenarioRates[s][p]*f*10)/10;
+  }
+  if(selectedCategoryId()==="ALL_TOU")withOverride({rateMult:out.rateMult},()=>{out.scenarioRates=allTouDisplayRates()});
+  for(const s of seasons)for(const p of bands)out.after[s+p]=out.scenarioRates[s][p];
+  return out;
+}
+// 주말 할인 효과 = −(할인율 × 할인 구간 매출). 선택 계절에 같은 할인율 d를 쓰면
+// 효과가 d에 정비례하므로 바로 풀린다. 0~100% 밖이면 경계값으로 맞추고 알린다.
+function solveDiscount(target,e,seasons){
+  if(!selectedCats().some(c=>DISCOUNT_CATS.includes(c)))return{error:"선택한 종별은 주말 할인 대상(산업용(을)·EV)이 아님"};
+  const W=seasons.reduce((s,se)=>s+e.fin.win[se],0);
+  if(W<=0)return{error:"선택한 계절에 주말 할인 구간(토·일·공휴일 11~14시) 매출이 없음"};
+  const now=seasons.reduce((s,se)=>s+state.discountRates[se]*e.fin.win[se],0);
+  let d=(e.dd-target+now)/W,clamped=null;
+  if(d<0){clamped=`할인율을 0%까지 낮춰도 목표에 못 미침`;d=0}
+  if(d>1){clamped=`할인율을 100%로 올려도 목표에 못 미침`;d=1}
+  d=Math.round(d*1000)/1000;
+  const rates={...state.discountRates};for(const s of seasons)rates[s]=d;
+  return{d,rates,clamped,before:Object.fromEntries(seasons.map(s=>[s,state.discountRates[s]]))};
+}
+function runSolver(){
+  const box=$("solverResult");
+  if(!state.lastResult){box.innerHTML="";return}
+  const seasons=solverSeasons(),targets={ds:readTarget("targetSchedule"),dr:readTarget("targetRate"),dd:readTarget("targetDiscount")};
+  if(targets.ds===null&&targets.dr===null&&targets.dd===null){box.innerHTML='<div class="callout warning">목표값을 하나 이상 입력해야 함(억원 단위)</div>';return}
+  if($("scope").value!=="연간"&&!seasons.includes($("scope").value)){box.innerHTML=`<div class="callout warning">1번 분석 범위가 ${seasonLabel($("scope").value)}이므로 다른 계절은 조정해도 결과가 바뀌지 않음. 조정 계절을 맞추거나 분석 범위를 연간으로 바꿔야 함</div>`;return}
+  const before=computeEffects(),p={scenarioSchedule:clone(state.scenarioSchedule),scenarioRates:clone(state.scenarioRates),rateMult:clone(state.rateMult),discountRates:{...state.discountRates},discountForce:null},detail={};
+  if(targets.ds!==null){const r=withOverride(p,()=>solveSchedule(targets.ds-before.ds,seasons,$("solveKeepNight").checked));p.scenarioSchedule=r.newSchedule;detail.ds=r}
+  if(targets.dr!==null){const e=withOverride(p,computeEffects),r=withOverride(p,()=>solveRates(targets.dr,e,seasons,solverBands()));if(!r.error){p.rateMult=r.rateMult;p.scenarioRates=r.scenarioRates}detail.dr=r}
+  if(targets.dd!==null){p.discountForce=true;const e=withOverride(p,computeEffects),r=withOverride(p,()=>solveDiscount(targets.dd,e,seasons));if(!r.error)p.discountRates=r.rates;detail.dd=r}
+  const after=withOverride(p,computeEffects);
+  state.solverProposal={p,seasons};
+  renderSolverResult(before,after,targets,detail,seasons);
+  $("applySolution").disabled=false;
+}
+function renderSolverResult(before,after,t,detail,seasons){
+  const row=(label,key)=>{const tv=t[key],av=after[key],gap=tv===null?null:av-tv;return`<tr><td>${label}</td><td>${signedEok(before[key])}</td><td>${tv===null?'<span class="muted">유지</span>':signedEok(tv)}</td><td class="${cssSign(av)}"><b>${signedEok(av)}</b></td><td>${gap===null?"-":(Math.abs(gap)<=Math.max(5e6,Math.abs(tv)*0.005)?"달성":signedEok(gap))}</td></tr>`};
+  const tot=e=>e.fin.totalRev-e.base.totalRev;
+  let h=`<h3>계산 결과(${seasons.map(seasonLabel).join("·")} 조정)</h3><div class="scroll"><table class="table solver-out"><thead><tr><th>효과(억원)</th><th>현재</th><th>목표</th><th>조정 후</th><th>목표와 차이</th></tr></thead><tbody>${row("시간대 구분 효과","ds")}${row("단가 조정 효과","dr")}${row("주말 할인 효과","dd")}<tr class="total"><td>매출 증감 합계</td><td>${signedEok(tot(before))}</td><td>-</td><td class="${cssSign(tot(after))}"><b>${signedEok(tot(after))}</b></td><td>-</td></tr></tbody></table></div>`;
+  h+=`<div class="solver-levers">`;
+  if(detail.ds){const r=detail.ds;h+=`<div class="lever"><b>① 시간대 조정</b>`;
+    if(!r.changes.length)h+=`<p>바꿀 필요 없음(현재 시간대 유지)</p>`;
+    else{h+=`<p>평일 ${r.changes.length}개 시간 변경(토요일은 평일 최대부하를 중간부하로 두는 규칙 적용, 일·공휴일은 그대로)</p><ul>${r.changes.map(c=>`<li>${seasonLabel(c.s)} ${String(c.h).padStart(2,"0")}~${String((c.h+1)%24).padStart(2,"0")}시: <span class="pill ${PERIOD_CLASS[c.from]}">${c.from}</span> → <span class="pill ${PERIOD_CLASS[c.to]}">${c.to}</span>${c.satFrom!==c.satTo?` <small>(토 ${c.satFrom}→${c.satTo})</small>`:""}</li>`).join("")}</ul>`}
+    if(!r.reachable)h+=`<p class="warn-text">선택 계절 시간대만으로는 목표에 닿지 않아 가장 가까운 값으로 맞춤(가능 범위: 현재 대비 ${signedEok(r.lo)} ~ ${signedEok(r.hi)}억원)</p>`;
+    h+=`</div>`}
+  if(detail.dr){const r=detail.dr;h+=`<div class="lever"><b>② 단가 조정</b>`;
+    if(r.error)h+=`<p class="warn-text">${r.error}</p>`;
+    else{h+=`<p>선택 계절 ${solverBands().join("·")} 단가 ${r.f>=1?"+":""}${((r.f-1)*100).toFixed(2)}% 조정</p><ul>${Object.keys(r.after).map(k=>{const s=SEASONS.find(x=>k.startsWith(x)),pp=k.slice(s.length);return`<li>${seasonLabel(s)} ${pp}: ${r.before[k].toFixed(1)} → <b>${r.after[k].toFixed(1)}</b> 원/kWh</li>`}).join("")}</ul>`;
+      if(selectedCategoryId()==="ALL_TOU")h+=`<p class="muted">전체종별은 6개 종별 단가에 같은 비율을 곱함(표의 값은 판매량 가중평균)</p>`}
+    h+=`</div>`}
+  if(detail.dd){const r=detail.dd;h+=`<div class="lever"><b>③ 주말 할인율 조정</b>`;
+    if(r.error)h+=`<p class="warn-text">${r.error}</p>`;
+    else{h+=`<ul>${Object.keys(r.before).map(s=>`<li>${seasonLabel(s)} 주말 11~14시 할인율: ${pct(r.before[s])} → <b>${pct(r.d)}</b></li>`).join("")}</ul>`;if(r.clamped)h+=`<p class="warn-text">${r.clamped}</p>`}
+    h+=`</div>`}
+  h+=`</div><p class="muted">시간대 → 단가 → 할인 순서로 하나씩 맞춤. 앞 단계를 바꾸면 뒤 효과도 같이 움직이므로, 목표를 비워둔 효과도 값이 달라질 수 있음. 단가는 0.1원, 할인율은 0.1%p 단위로 반올림해 목표와 약간 차이가 날 수 있음.</p>`;
+  $("solverResult").innerHTML=h;
+}
+function applySolution(){
+  const sp=state.solverProposal;if(!sp)return;
+  const {discountForce,...rest}=sp.p;Object.assign(state,clone(rest));
+  if(discountForce)$("useScenarioDiscount").checked=true;
+  state.activeSeason=sp.seasons[0];document.querySelectorAll("#seasonTabs .tab").forEach(x=>x.classList.toggle("active",x.dataset.season===state.activeSeason));
+  state.solverProposal=null;$("applySolution").disabled=true;
+  renderAll();
+  $("solverResult").insertAdjacentHTML("afterbegin",'<div class="callout">조정안을 시나리오에 적용함. 2·3번 패널과 5번 요인분해에서 바뀐 내용을 확인할 수 있음.</div>');
+}
+function clearSolverResult(){state.solverProposal=null;if($("applySolution"))$("applySolution").disabled=true;if($("solverResult"))$("solverResult").innerHTML=""}
+function updateSolverCurrent(e){
+  $("solveCurSchedule").textContent=signedEok(e.ds);$("solveCurRate").textContent=signedEok(e.dr);$("solveCurDiscount").textContent=signedEok(e.dd);
+  for(const [id,v] of [["targetSchedule",e.ds],["targetRate",e.dr],["targetDiscount",e.dd]])$(id).placeholder=`현재 ${eok(v)}`;
+}
+$("solveTargets").onclick=runSolver;
+$("applySolution").onclick=applySolution;
+["solveSeason","solveKeepNight"].forEach(id=>$(id).addEventListener("change",clearSolverResult));
+document.querySelectorAll(".solve-band").forEach(x=>x.addEventListener("change",clearSolverResult));
+document.querySelectorAll(".disc-rate").forEach(i=>i.onchange=()=>{const v=Math.min(100,Math.max(0,number(i.value)));state.discountRates[i.dataset.season]=v/100;i.value=v;clearSolverResult();updateWeekendDiscountText();calculate()});
 
 $("region").onchange=()=>{loadScenarioPreset();updateWarning()};
 $("category").onchange=selectCategory;
@@ -473,13 +658,13 @@ $("customerScope").onchange=()=>{updateCustomerScopeControls();loadScenarioPrese
 $("contract").onchange=()=>{populateVoltage();loadScenarioPreset();updateWarning()};
 $("voltage").onchange=()=>{populateChoice();loadScenarioPreset();updateWarning()};
 $("choice").onchange=()=>{loadScenarioPreset();updateWarning()};
-$("baseVersion").onchange=renderAll;
+$("baseVersion").onchange=()=>{clearSolverResult();renderAll()};
 $("scenarioVersion").onchange=loadScenarioPreset;
 $("year").onchange=()=>{loadScenarioPreset();updateWarning()};
-$("scope").onchange=()=>{calculate();updateWarning()};
+$("scope").onchange=()=>{clearSolverResult();calculate();updateWarning()};
 $("dayType").onchange=renderAll;
-$("useScenarioDiscount").onchange=calculate;
-$("useAnnualCalibration").onchange=()=>{calculate();updateWarning()};
+$("useScenarioDiscount").onchange=()=>{clearSolverResult();calculate()};
+$("useAnnualCalibration").onchange=()=>{clearSolverResult();calculate();updateWarning()};
 $("loadScenario").onclick=loadScenarioPreset;
 $("copyBase").onclick=copyBase;
 $("exportCsv").onclick=exportCsv;
@@ -489,7 +674,7 @@ $("yAxisMin").onchange=()=>{if(state.lastResult)renderChart()};
 $("yAxisMax").onchange=()=>{if(state.lastResult)renderChart()};
 document.querySelectorAll("#seasonTabs .tab").forEach(btn=>btn.onclick=()=>{state.activeSeason=btn.dataset.season;document.querySelectorAll("#seasonTabs .tab").forEach(x=>x.classList.toggle("active",x===btn));renderAll()});
 document.querySelectorAll("#graphDayTabs .tab").forEach(btn=>btn.onclick=()=>{state.graphDayType=btn.dataset.graphDay;document.querySelectorAll("#graphDayTabs .tab").forEach(x=>x.classList.toggle("active",x===btn));renderChart()});
-document.querySelectorAll(".rate-adjust").forEach(btn=>btn.onclick=()=>{if(selectedCategoryId()==="ALL_TOU")return;const m=number(btn.dataset.mult);for(const s of SEASONS)for(const p of PERIODS)state.scenarioRates[s][p]=Math.round(state.scenarioRates[s][p]*m*10)/10;renderAll()});
+document.querySelectorAll(".rate-adjust").forEach(btn=>btn.onclick=()=>{if(selectedCategoryId()==="ALL_TOU")return;const m=number(btn.dataset.mult);for(const s of SEASONS)for(const p of PERIODS)state.scenarioRates[s][p]=Math.round(state.scenarioRates[s][p]*m*10)/10;clearSolverResult();renderAll()});
 
 // 창 크기 변경(브라우저 전체화면 진입/해제 포함)마다 그래프의 viewBox 폭을
 // 다시 맞춘다 — renderChart()가 매번 svg의 "그 시점" 렌더링 폭을 읽어

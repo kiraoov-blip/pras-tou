@@ -282,3 +282,30 @@ main,.layout,.layout>div,aside,.panel,.kpi{min-width:0}
   .hour-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
   .schedule-hours{grid-template-columns:repeat(4,minmax(0,1fr))}
 }
+
+/* ── v0.6: KPI 8개(4×2), 9. 목표 효과 역산 ── */
+.kpi-grid{grid-template-columns:repeat(4,minmax(150px,1fr))}
+@media(max-width:1150px){.kpi-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:720px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.solver-controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end;margin:10px 0}
+.solver-controls>label:first-child{font-size:11px;color:var(--muted);min-width:160px}
+.solver-controls .check,.solver-bands .check{font-size:12px;color:var(--text)}
+.solver-bands{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:11px;color:var(--muted)}
+.solver-table input{margin-top:0;min-width:110px}
+.solver-table td:nth-child(2){white-space:nowrap}
+.solver-discount{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px}
+.solver-discount label{display:flex;align-items:center;gap:5px;color:var(--text)}
+.solver-discount input{width:76px;margin-top:0}
+#solverResult h3{margin:16px 0 8px}
+.solver-out tr.total td{border-top:2px solid var(--line);font-weight:700}
+.solver-levers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+.solver-levers .lever{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12px}
+.solver-levers ul{margin:6px 0 0;padding-left:18px;line-height:1.75}
+.solver-levers p{margin:6px 0 0}
+.pill{display:inline-block;border-radius:5px;padding:0 6px;font-size:11px}
+.pill.off{background:var(--off)}.pill.mid{background:var(--mid)}.pill.peak{background:var(--peak)}
+.warn-text{color:var(--red)}
+@media(max-width:900px){.solver-levers{grid-template-columns:1fr}}
+.solver-table input{border:1px solid #c4d2c8;border-radius:6px;background:#fff;padding:6px 8px}
+@media(max-width:340px){.kpi-grid{grid-template-columns:1fr}}
+.solver-table th:nth-child(4),.solver-table td:nth-child(4),.solver-out td:first-child,.solver-out th:first-child{text-align:left}

@@ -8,13 +8,13 @@
   <!-- PRAS-DER(파랑)·CARE-Jeju(주황)와 구분되는 세이지 그린 계열 파비콘 —
        같은 모양(사각형 4개)을 색만 앱 고유 브랜드 색으로 바꿔 브라우저 탭에서
        한눈에 구분되게 한다. -->
-  <link rel="icon" href="./favicon.svg?v=20260831-060">
+  <link rel="icon" href="./favicon.svg?v=20261021-070">
   <!-- 홈 화면에 추가했을 때 쓰이는 아이콘. 지금까지는 이 태그가 아예 없어
        iOS에서 "홈 화면에 추가"를 하면 아이콘 대신 화면을 찍은 스크린샷이
        그대로 쓰였다 — PRAS-DER·PRAS-TOU·CARE-Jeju를 모두 아우르는 새
        계기판 아이콘(파란 패널 위 흰 계기판)을 여기도 동일하게 연결한다. -->
   <link rel="apple-touch-icon" href="./home-icon-192.png?v=20260901d">
-  <link rel="stylesheet" href="./style.css?v=20260831-060">
+  <link rel="stylesheet" href="./style.css?v=20261021-070">
 </head>
 <body>
 <!--
@@ -74,6 +74,8 @@
     <article class="kpi"><span>매출 증감</span><strong id="kDelta">-</strong><small id="kDeltaPct">-</small></article>
     <article class="kpi"><span>기준 평균단가</span><strong id="kBaseAvg">-</strong><small>원/kWh</small></article>
     <article class="kpi"><span>시나리오 평균단가</span><strong id="kScenarioAvg">-</strong><small>원/kWh</small></article>
+    <article class="kpi"><span>평균단가 차이</span><strong id="kAvgDiff">-</strong><small id="kAvgDiffPct">-</small></article>
+    <article class="kpi"><span>최대부하 사용량 비중</span><strong id="kPeakShare">-</strong><small id="kPeakShareNote">-</small></article>
   </section>
 
   <div class="layout">
@@ -88,7 +90,7 @@
         </div>
         <div class="day-row">
           <label>요일구분<select id="dayType"><option value="평일">평일</option><option value="토요일">토요일</option><option value="일·공휴일">일·공휴일</option></select></label>
-          <label id="weekendDiscountLabel" class="check"><input id="useScenarioDiscount" type="checkbox" checked> 주말 할인 50% 적용</label>
+          <label id="weekendDiscountLabel" class="check"><input id="useScenarioDiscount" type="checkbox" checked> <span id="weekendDiscountText">주말 할인 적용</span></label>
         </div>
         <div class="legend"><span><i class="off"></i>경부하</span><span><i class="mid"></i>중간부하</span><span><i class="peak"></i>최대부하</span></div>
         <div id="hourGrid" class="hour-grid"></div>
@@ -165,7 +167,7 @@
         <div class="callout">시간대 변경 → 단가 변경 → 주말 할인 적용 순서의 순차효과임. 최종 합계는 전체 매출 증감액과 일치함.</div>
       </section>
       <section class="panel"><h2>6. 계절별 결과</h2><table id="seasonTable" class="table"></table></section>
-      <section class="panel"><h2>7. 경·중·최 재분류</h2><table id="periodTable" class="table"></table></section>
+      <section class="panel"><h2>7. 경·중·최 사용량 변화</h2><table id="periodTable" class="table"></table></section>
       <section class="panel">
         <h2>8. 계산 범위</h2>
         <ul class="notes">
@@ -179,9 +181,38 @@
       </section>
     </aside>
   </div>
+
+  <section class="panel" id="solverPanel">
+    <h2>9. 목표 효과 역산</h2>
+    <p class="muted">5번 요인분해의 효과를 원하는 값으로 맞추는 시간대·단가·주말 할인율을 찾아줌. 선택한 계절만 조정하며, 목표를 비워둔 효과는 조정하지 않음.</p>
+    <div class="solver-controls">
+      <label>조정 계절<select id="solveSeason"><option value="하계">하계</option><option value="춘추계" selected>봄·가을철</option><option value="동계">겨울철</option><option value="ALL">전체 계절</option></select></label>
+      <label class="check"><input id="solveKeepNight" type="checkbox" checked> 경부하(22~08시)는 그대로 두고 낮 시간만 중간·최대 사이에서 조정</label>
+      <div class="solver-bands"><span>단가 조정 대상</span>
+        <label class="check"><input type="checkbox" class="solve-band" value="경부하" checked>경부하</label>
+        <label class="check"><input type="checkbox" class="solve-band" value="중간부하" checked>중간부하</label>
+        <label class="check"><input type="checkbox" class="solve-band" value="최대부하" checked>최대부하</label>
+      </div>
+    </div>
+    <div class="scroll"><table class="table solver-table">
+      <thead><tr><th>효과</th><th>현재(억원)</th><th>목표(억원)</th><th>조정 수단</th></tr></thead>
+      <tbody>
+        <tr><td>시간대 구분 효과</td><td id="solveCurSchedule">-</td><td><input id="targetSchedule" type="number" step="10"></td><td>선택 계절 평일·토요일 시간대(시간 단위)</td></tr>
+        <tr><td>단가 조정 효과</td><td id="solveCurRate">-</td><td><input id="targetRate" type="number" step="10"></td><td>선택 계절·시간대 단가에 같은 비율 적용</td></tr>
+        <tr><td>주말 할인 효과</td><td id="solveCurDiscount">-</td><td><input id="targetDiscount" type="number" step="10"></td><td>선택 계절 주말 11~14시 할인율</td></tr>
+      </tbody>
+    </table></div>
+    <div class="solver-discount"><span>시나리오 주말 할인율(토·일·공휴일 11~14시, 산업용(을)·EV)</span>
+      <label>하계<input class="disc-rate" data-season="하계" type="number" min="0" max="100" step="0.1">%</label>
+      <label>봄·가을철<input class="disc-rate" data-season="춘추계" type="number" min="0" max="100" step="0.1">%</label>
+      <label>겨울철<input class="disc-rate" data-season="동계" type="number" min="0" max="100" step="0.1">%</label>
+    </div>
+    <div class="button-row"><button id="solveTargets" class="btn primary">최적 조정안 계산</button><button id="applySolution" class="btn" disabled>시나리오에 적용</button></div>
+    <div id="solverResult"></div>
+  </section>
 </main>
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="./app.js?v=20260831-060"></script>
+<script src="./app.js?v=20261021-070"></script>
 </body>
 </html>
