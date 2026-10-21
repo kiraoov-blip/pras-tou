@@ -309,3 +309,40 @@ main,.layout,.layout>div,aside,.panel,.kpi{min-width:0}
 .solver-table input{border:1px solid #c4d2c8;border-radius:6px;background:#fff;padding:6px 8px}
 @media(max-width:340px){.kpi-grid{grid-template-columns:1fr}}
 .solver-table th:nth-child(4),.solver-table td:nth-child(4),.solver-out td:first-child,.solver-out th:first-child{text-align:left}
+
+/* ── v0.6.1: 9번 표 휴대폰 대응 ──
+   4칸 표에서 입력칸 최소폭(110px)이 칸 너비를 넘어 옆 칸 위로 겹치던 문제.
+   좁은 화면에서는 '조정 수단' 칸을 숨기고 그 설명을 효과 이름 아래 작은
+   글씨로 옮겨, 목표 입력칸이 칸 안에 꽉 차게 한다. */
+.solver-table .means-inline{display:none}
+.solver-table input{min-width:0;width:100%}
+.solver-table col.c-name{width:24%}.solver-table col.c-cur{width:18%}.solver-table col.c-target{width:22%}.solver-table col.c-means{width:36%}
+@media(max-width:720px){
+  .solver-table col.c-name{width:42%}.solver-table col.c-cur{width:26%}.solver-table col.c-target{width:32%}.solver-table col.c-means{width:0}
+  .solver-table th:nth-child(4),.solver-table td:nth-child(4){display:none}
+  .solver-table .means-inline{display:block;font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1.35;font-weight:400}
+  .solver-table td,.solver-table th{padding:7px 6px}
+  .solver-table input{padding:6px;font-size:12px;height:auto}
+  .solver-table input::placeholder{font-size:10.5px}
+  .solver-out{font-size:11px}
+  .solver-out th,.solver-out td{padding:6px 4px}
+  .solver-discount label{flex:1 1 30%;min-width:0}
+  .solver-discount input{width:100%;min-width:0}
+}
+@media(max-width:720px){
+  .solver-discount{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px}
+  .solver-discount>span{grid-column:1/-1}
+  .solver-discount label{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name name" "input unit";gap:3px 4px;align-items:center}
+  .solver-discount .disc-name{grid-area:name;font-size:10.5px;color:var(--muted);white-space:nowrap}
+  .solver-discount input{grid-area:input;padding:6px}
+  .solver-discount .disc-unit{grid-area:unit}
+}
+
+/* ── v0.6.2: 버튼·탭 글자 크기 ──
+   button은 font:inherit라 브라우저 기본 16px이 그대로 쓰여 대제목(h2 17px)과
+   거의 같은 크기로 보였다. PC 화면에서는 소제목(h3 14px)보다 작은 13px로
+   맞춘다. 휴대폰(720px 이하)은 기존 모바일 규칙(10.5~11px)을 그대로 쓴다. */
+@media(min-width:721px){
+  .btn,.tab,.calibration-check{font-size:13px}
+  .calibration-check{padding-top:6px;padding-bottom:6px}
+}

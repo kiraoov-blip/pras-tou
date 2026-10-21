@@ -61,7 +61,9 @@ const signedSplitWon=n=>{const r=splitWon(n);return{value:(n>=0?"+":"")+r.value,
 const splitEnergyTWh=n=>{const a=Math.abs(n),s=n<0?"-":"",t=a/1e9,d=t>=100?1:t>=1?2:3;return{value:s+t.toLocaleString("ko-KR",{minimumFractionDigits:d,maximumFractionDigits:d}),unit:"TWh"}};
 const eok=n=>(n/1e8).toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1});
 const signedEok=n=>(n>=0?"+":"")+eok(n);
-const seasonLabel=s=>s==="춘추계"?"봄·가을철":s==="동계"?"겨울철":s;
+// 화면 표시용 계절 이름. 내부 키(하계·춘추계·동계)는 자료·요금표와 맞추기 위해 그대로 둔다.
+const SEASON_LABELS={"하계":"여름","춘추계":"봄가을","동계":"겨울"};
+const seasonLabel=s=>SEASON_LABELS[s]||s;
 const pct=(v,d=1)=>(v*100).toLocaleString("ko-KR",{minimumFractionDigits:d,maximumFractionDigits:d})+"%";
 /** strong 엘리먼트 안을 "값 + 더 작은 글씨의 단위(<small>)"로 채운다(PRAS-DER
  * .metric-card strong small 패턴과 동일한 마크업 구조). */
@@ -400,7 +402,7 @@ function renderScheduleCompare(){
   const makeRow=(label,values)=>`<div class="schedule-row"><div class="schedule-label">${label}</div><div class="schedule-hours">${values.map((p,i)=>`<div class="schedule-cell"><span>${String(i).padStart(2,"0")}</span><div class="mini ${PERIOD_CLASS[p]}">${p[0]}</div></div>`).join("")}</div></div>`;
   $("scheduleCompare").innerHTML=makeRow("기준안",base)+makeRow("시나리오",scenario);
 }
-function rateTable(r,editable){let h=`<thead><tr><th>계절</th>${PERIODS.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;for(const s of SEASONS){h+=`<tr><td>${s==="춘추계"?"봄·가을철":s}</td>`;for(const p of PERIODS)h+=editable?`<td><input type="number" step="0.1" data-season="${s}" data-period="${p}" value="${r[s][p].toFixed(1)}"></td>`:`<td>${r[s][p].toFixed(1)}</td>`;h+="</tr>"}return h+"</tbody>"}
+function rateTable(r,editable){let h=`<thead><tr><th>계절</th>${PERIODS.map(p=>`<th>${p}</th>`).join("")}</tr></thead><tbody>`;for(const s of SEASONS){h+=`<tr><td>${seasonLabel(s)}</td>`;for(const p of PERIODS)h+=editable?`<td><input type="number" step="0.1" data-season="${s}" data-period="${p}" value="${r[s][p].toFixed(1)}"></td>`:`<td>${r[s][p].toFixed(1)}</td>`;h+="</tr>"}return h+"</tbody>"}
 function renderRates(){
   const allCat=selectedCategoryId()==="ALL_TOU",base=allCat?aggregateRateTable($("baseVersion").value):buildRates(selectedCategoryId(),$("baseVersion").value);
   if(allCat)state.scenarioRates=allTouDisplayRates();
@@ -446,7 +448,7 @@ function calculate(){
   renderSeasonTable(base,fin);renderPeriodTable(base,fin);renderChart();state.lastResult={base,fin,ds,dr,dd};
   updateSolverCurrent(e);
 }
-function renderSeasonTable(b,f){let h="<thead><tr><th>계절</th><th>기준안</th><th>시나리오</th><th>증감</th></tr></thead><tbody>";for(const s of SEASONS){const d=f.bySeason[s].rev-b.bySeason[s].rev;h+=`<tr><td>${s==="춘추계"?"봄·가을철":s}</td><td>${fmtWon(b.bySeason[s].rev)}</td><td>${fmtWon(f.bySeason[s].rev)}</td><td class="${cssSign(d)}">${signedWon(d)}</td></tr>`}$("seasonTable").innerHTML=h+"</tbody>"}
+function renderSeasonTable(b,f){let h="<thead><tr><th>계절</th><th>기준안</th><th>시나리오</th><th>증감</th></tr></thead><tbody>";for(const s of SEASONS){const d=f.bySeason[s].rev-b.bySeason[s].rev;h+=`<tr><td>${seasonLabel(s)}</td><td>${fmtWon(b.bySeason[s].rev)}</td><td>${fmtWon(f.bySeason[s].rev)}</td><td class="${cssSign(d)}">${signedWon(d)}</td></tr>`}$("seasonTable").innerHTML=h+"</tbody>"}
 function renderPeriodTable(b,f){let h="<thead><tr><th>시간대</th><th>기준 사용량</th><th>시나리오 사용량</th><th>변화</th></tr></thead><tbody>";for(const p of PERIODS){const d=f.byPeriod[p].usage-b.byPeriod[p].usage;h+=`<tr><td>${p}</td><td>${fmtEnergy(b.byPeriod[p].usage)}</td><td>${fmtEnergy(f.byPeriod[p].usage)}</td><td class="${cssSign(d)}">${d>=0?"+":""}${fmtEnergy(d)}</td></tr>`}$("periodTable").innerHTML=h+"</tbody>"}
 
 function aggregatedDailyRows(){
@@ -470,20 +472,27 @@ function renderChart(){
   // 기본값도 그대로 두면 되지만, x/y 배율이 이제 같아지므로 사실상 의미가
   // 없어진다) 글자·선이 가로세로 어느 쪽으로도 왜곡되지 않는다. 폭을 못
   // 구하는 경우(예: 렌더링 전)에는 기존 900을 그대로 쓴다.
-  const svg=$("loadChart"),w=svg.getBoundingClientRect().width||900,h=285,l=64,rr=18,t=36,b=35,day=state.graphDayType,graph=getGraphDaySeries(day),vals=graph.vals;
+  // 높이도 실제 렌더링 높이를 읽는다 — 휴대폰에서는 CSS가 그래프 높이를
+  // 220~235px로 줄이는데 285로 고정해 두면 비율을 맞추느라 그림 전체가
+  // 작게 축소돼 가운데로 몰려 보였다. 좁은 화면에서는 왼쪽 여백·시간 눈금·
+  // 위쪽 띠 글자를 줄여 그래프 폭을 최대한 확보한다.
+  const svg=$("loadChart"),rect=svg.getBoundingClientRect(),w=rect.width||900,h=rect.height||285,narrow=w<560,l=narrow?38:64,rr=narrow?8:18,t=narrow?32:36,b=narrow?26:35,day=state.graphDayType,graph=getGraphDaySeries(day),vals=graph.vals;
   svg.setAttribute("viewBox",`0 0 ${w} ${h}`);
   const regionLabel=$("region").selectedOptions[0]?.textContent||"",catLabel=$("category").selectedOptions[0]?.textContent||"",yearLabel=$("year").selectedOptions[0]?.textContent||"",scopeLabel=$("scope").selectedOptions[0]?.textContent||"";
   $("graphDayInfo").textContent=`${regionLabel} · ${catLabel} · ${yearLabel} · ${scopeLabel} · ${day==="전체"?"전체 요일":day} ${graph.rowCount.toLocaleString()}일 평균`;
-  if(!graph.rowCount){svg.innerHTML='<text x="450" y="145" text-anchor="middle" font-size="14" fill="#5f7267">선택한 조건의 부하자료가 없음</text>';return}
+  if(!graph.rowCount){svg.innerHTML=`<text x="${w/2}" y="${h/2}" text-anchor="middle" font-size="14" fill="#5f7267">선택한 조건의 부하자료가 없음</text>`;return}
   const {yMin,yMax}=getYAxisBounds(vals),x=i=>l+i*(w-l-rr)/23,y=v=>h-b-(v-yMin)/(yMax-yMin)*(h-t-b);let out="";
-  for(let i=0;i<24;i++){const xx=l+i*(w-l-rr)/24,ww=(w-l-rr)/24;if(day==="전체")out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="#eaf1ec"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8" fill="#5f7267">전체</text>`;else{const p=state.scenarioSchedule[state.activeSeason][day][i];out+=`<rect x="${xx}" y="3" width="${ww-1}" height="19" fill="var(--${PERIOD_CLASS[p]})"/><text x="${xx+ww/2}" y="16" text-anchor="middle" font-size="8">${p[0]}</text>`}}
-  for(let k=0;k<=4;k++){const ratio=k/4,yy=t+(h-t-b)*ratio,tick=yMax-(yMax-yMin)*ratio;out+=`<line x1="${l}" y1="${yy}" x2="${w-rr}" y2="${yy}" stroke="#dde6e0"/><text x="${l-7}" y="${yy+4}" text-anchor="end" font-size="9" fill="#5f7267">${(tick/1e6).toFixed(1)}</text>`}
-  out+=`<text x="8" y="${t-7}" font-size="9" fill="#5f7267">GWh/일</text><polyline points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#1f8a5f" stroke-width="3"/>`;
+  const bandH=narrow?15:19,bandY=narrow?13:16;
+  if(day==="전체")out+=`<rect x="${l}" y="3" width="${w-l-rr}" height="${bandH}" fill="#eaf1ec"/><text x="${l+(w-l-rr)/2}" y="${bandY}" text-anchor="middle" font-size="9" fill="#5f7267">전체 요일</text>`;
+  else for(let i=0;i<24;i++){const xx=l+i*(w-l-rr)/24,ww=(w-l-rr)/24,p=state.scenarioSchedule[state.activeSeason][day][i];out+=`<rect x="${xx}" y="3" width="${Math.max(ww-1,1)}" height="${bandH}" fill="var(--${PERIOD_CLASS[p]})"/>`;if(ww>=10)out+=`<text x="${xx+ww/2}" y="${bandY}" text-anchor="middle" font-size="8">${p[0]}</text>`}
+  for(let k=0;k<=4;k++){const ratio=k/4,yy=t+(h-t-b)*ratio,tick=yMax-(yMax-yMin)*ratio;out+=`<line x1="${l}" y1="${yy}" x2="${w-rr}" y2="${yy}" stroke="#dde6e0"/><text x="${l-5}" y="${yy+4}" text-anchor="end" font-size="9" fill="#5f7267">${(tick/1e6).toFixed(1)}</text>`}
+  out+=`<text x="${narrow?2:8}" y="${t-7}" font-size="9" fill="#5f7267">GWh/일</text><polyline points="${vals.map((v,i)=>`${x(i)},${y(v)}`).join(" ")}" fill="none" stroke="#1f8a5f" stroke-width="${narrow?2.4:3}" stroke-linejoin="round"/>`;
   // 요청에 따라 선 위의 원형 마크(점)는 제거했다. 시간 눈금은 그래프가 화면
   // 전체 폭으로 넓어져(4번 패널 전체 폭 배치) 24칸이 다 들어갈 공간이 있으므로,
   // 짝수 시간만 걸러내던 것을 없애고 0~23시 전체를 표시한다(글자가 24개라
   // 폰트 크기만 살짝 줄여 서로 겹치지 않게 한다).
-  vals.forEach((v,i)=>{out+=`<text x="${x(i)}" y="${h-13}" text-anchor="middle" font-size="8" fill="#5f7267">${i}</text>`});svg.innerHTML=out;
+  // 좁은 화면에서는 시간 눈금을 2시간 간격으로 줄여 글자가 겹치지 않게 한다.
+  vals.forEach((v,i)=>{if(!narrow||i%2===0)out+=`<text x="${x(i)}" y="${h-(narrow?9:13)}" text-anchor="middle" font-size="${narrow?9:8}" fill="#5f7267">${i}</text>`});svg.innerHTML=out;
 }
 
 function updateWarning(){
@@ -504,8 +513,8 @@ function updateWarning(){
 
 function exportCsv(){
   const r=state.lastResult;if(!r)return;
-  const rows=[["항목","값"],["분석지역",$("region").selectedOptions[0].textContent],["분석종별",$("category").selectedOptions[0].textContent],["연도",$("year").selectedOptions[0].textContent],["범위",$("scope").selectedOptions[0].textContent],["고객범위",$("customerScope").selectedOptions[0].textContent],["계약전력구간",$("contract").value],["전압구분",$("voltage").value],["선택요금",$("choice").value],["기준안 매출(원)",r.base.totalRev],["시나리오 매출(원)",r.fin.totalRev],["증감액(원)",r.fin.totalRev-r.base.totalRev],["시간대 효과(원)",r.ds],["단가 효과(원)",r.dr],["주말 할인 효과(원)",r.dd],["기준 평균단가(원/kWh)",r.base.totalUsage?r.base.totalRev/r.base.totalUsage:""],["시나리오 평균단가(원/kWh)",r.fin.totalUsage?r.fin.totalRev/r.fin.totalUsage:""],["시나리오 주말 할인율(하계/봄·가을/겨울)",SEASONS.map(x=>pct(state.discountRates[x])).join(" / ")],[],["계절","기준안(원)","시나리오(원)","증감(원)"]];
-  for(const s of SEASONS)rows.push([s,r.base.bySeason[s].rev,r.fin.bySeason[s].rev,r.fin.bySeason[s].rev-r.base.bySeason[s].rev]);
+  const rows=[["항목","값"],["분석지역",$("region").selectedOptions[0].textContent],["분석종별",$("category").selectedOptions[0].textContent],["연도",$("year").selectedOptions[0].textContent],["범위",$("scope").selectedOptions[0].textContent],["고객범위",$("customerScope").selectedOptions[0].textContent],["계약전력구간",$("contract").value],["전압구분",$("voltage").value],["선택요금",$("choice").value],["기준안 매출(원)",r.base.totalRev],["시나리오 매출(원)",r.fin.totalRev],["증감액(원)",r.fin.totalRev-r.base.totalRev],["시간대 효과(원)",r.ds],["단가 효과(원)",r.dr],["주말 할인 효과(원)",r.dd],["기준 평균단가(원/kWh)",r.base.totalUsage?r.base.totalRev/r.base.totalUsage:""],["시나리오 평균단가(원/kWh)",r.fin.totalUsage?r.fin.totalRev/r.fin.totalUsage:""],["시나리오 주말 할인율(여름/봄가을/겨울)",SEASONS.map(x=>pct(state.discountRates[x])).join(" / ")],[],["계절","기준안(원)","시나리오(원)","증감(원)"]];
+  for(const s of SEASONS)rows.push([seasonLabel(s),r.base.bySeason[s].rev,r.fin.bySeason[s].rev,r.fin.bySeason[s].rev-r.base.bySeason[s].rev]);
   if(selectedCategoryId()==="ALL_TOU"){rows.push([], ["종별","기준안(원)","시나리오(원)","증감(원)"]);for(const cat of SINGLE_CATEGORY_IDS)rows.push([catMeta(cat).name,r.base.breakdown[cat]||0,r.fin.breakdown[cat]||0,(r.fin.breakdown[cat]||0)-(r.base.breakdown[cat]||0)])}
   const csv="\ufeff"+rows.map(row=>row.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\r\n"),blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="PRAS_TOU_매출_분석결과.csv";a.click();URL.revokeObjectURL(a.href);
 }
