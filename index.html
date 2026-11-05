@@ -14,7 +14,7 @@
        그대로 쓰였다 — PRAS-DER·PRAS-TOU·CARE-Jeju를 모두 아우르는 새
        계기판 아이콘(파란 패널 위 흰 계기판)을 여기도 동일하게 연결한다. -->
   <link rel="apple-touch-icon" href="./home-icon-192.png?v=20260901d">
-  <link rel="stylesheet" href="./style.css?v=20261021-073">
+  <link rel="stylesheet" href="./style.css?v=20261105-unify1">
 </head>
 <body>
 <!--
@@ -25,6 +25,7 @@
 -->
 <div class="topbar">
   <a href="/tou/" class="site-brand">PRAS<span>TOU</span></a>
+  <ul class="site-tabs" id="navList"><li><a href="#s-input" class="active">분석조건</a></li><li><a href="#s-period">시간대</a></li><li><a href="#s-rate">단가</a></li><li><a href="#s-curve">부하곡선</a></li><li><a href="#s-factor">요인분해</a></li><li><a href="#s-season">계절별</a></li><li><a href="#s-usage">경·중·최</a></li><li><a href="#solverPanel">목표역산</a></li></ul>
   <a href="/" class="site-home-btn" aria-label="처음 화면으로">
     <!-- width/height를 속성으로도 직접 지정 — CSS가 어떤 이유로든 적용되지
          않는 경우(로딩 실패 등) svg가 기본 동작대로 부모 폭에 맞춰 커지면서
@@ -44,7 +45,7 @@
 
 <main>
 
-  <section class="panel">
+  <section id="s-input" class="panel">
     <h2>1. 분석 조건</h2>
     <div class="control-grid">
       <label>분석 지역<select id="region"><option value="NATIONAL">전국</option><option value="LAND">육지</option><option value="JEJU">제주</option></select></label>
@@ -80,7 +81,7 @@
 
   <div class="layout">
     <div class="layout-left">
-      <section class="panel">
+      <section id="s-period" class="panel">
         <h2>2. 시간대 구분 변경</h2>
         <p class="muted">계절과 요일을 선택한 뒤 시간 셀을 클릭하면 경부하 → 중간부하 → 최대부하 순으로 변경됨</p>
         <div class="tab-row" id="seasonTabs">
@@ -98,7 +99,7 @@
         <div class="scroll"><div id="scheduleCompare" class="schedule-compare"></div></div>
       </section>
 
-      <section class="panel">
+      <section id="s-rate" class="panel">
         <h2>3. 시간대별 단가 조정</h2>
         <div class="rate-layout">
           <div><h3>기준안 단가</h3><table id="baseRates" class="table"></table></div>
@@ -123,7 +124,7 @@
       화면에서 폭 전체를 차지하는 배치(.layout-full)는 아래 CSS의
       grid-template-areas("left aside" "full full")가 그대로 담당한다.
     -->
-    <section class="panel layout-full">
+    <section id="s-curve" class="panel layout-full">
       <h2>4. 요일별 평균 부하곡선</h2>
       <div id="graphDayTabs" class="tab-row graph-day-tabs">
         <button data-graph-day="전체" class="tab active">전체</button>
@@ -157,7 +158,7 @@
     </section>
 
     <aside>
-      <section class="panel">
+      <section id="s-factor" class="panel">
         <h2>5. 매출 변화 요인 분해</h2>
         <div class="decomp">
           <div><span>시간대 구분 효과</span><strong id="dSchedule">-</strong></div>
@@ -166,8 +167,8 @@
         </div>
         <div class="callout">시간대 변경 → 단가 변경 → 주말 할인 적용 순서의 순차효과임. 최종 합계는 전체 매출 증감액과 일치함.</div>
       </section>
-      <section class="panel"><h2>6. 계절별 결과</h2><table id="seasonTable" class="table"></table></section>
-      <section class="panel"><h2>7. 경·중·최 사용량 변화</h2><table id="periodTable" class="table"></table></section>
+      <section id="s-season" class="panel"><h2>6. 계절별 결과</h2><table id="seasonTable" class="table"></table></section>
+      <section id="s-usage" class="panel"><h2>7. 경·중·최 사용량 변화</h2><table id="periodTable" class="table"></table></section>
       <section class="panel">
         <h2>8. 계산 범위</h2>
         <ul class="notes">
@@ -215,5 +216,7 @@
 
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="./app.js?v=20261021-073"></script>
+<script>/* SIM-UNIFY: 구역 탭 — 지금 보고 있는 구역을 탭에 표시 */
+(()=>{const links=[...document.querySelectorAll('#navList a')];const secs=links.map(a=>document.querySelector(a.getAttribute('href')));if(!('IntersectionObserver' in window))return;const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>{const on=a.getAttribute('href')==='#'+e.target.id;a.classList.toggle('active',on);if(on)a.scrollIntoView({block:'nearest',inline:'nearest'});})}})},{rootMargin:'-20% 0px -70% 0px'});secs.forEach(s=>s&&io.observe(s));})();</script>
 </body>
 </html>
