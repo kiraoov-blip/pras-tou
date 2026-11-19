@@ -214,7 +214,8 @@
   </section>
 </main>
 
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- SheetJS 0.20.3을 저장소에 내장(vendor/): 외부 서버가 막힌 사내망에서도 자료를 읽을 수 있도록 -->
+<script src="vendor/xlsx.full.min.js"></script>
 <script src="./app.js?v=20261021-073"></script>
 <script>/* SIM-UNIFY: 구역 탭 — 지금 보고 있는 구역을 탭에 표시 */
 (()=>{const links=[...document.querySelectorAll('#navList a')];const secs=links.map(a=>document.querySelector(a.getAttribute('href')));if(!('IntersectionObserver' in window))return;const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>{const on=a.getAttribute('href')==='#'+e.target.id;a.classList.toggle('active',on);if(on)a.scrollIntoView({block:'nearest',inline:'nearest'});})}})},{rootMargin:'-20% 0px -70% 0px'});secs.forEach(s=>s&&io.observe(s));})();</script>
